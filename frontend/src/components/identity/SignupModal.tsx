@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { apiPost } from '@/lib/api-client';
+import { supabase } from '@/lib/supabase/client';
 import { useUserStore } from '@/stores/user-store';
 import RecoveryPhrase from '@/components/identity/RecoveryPhrase';
 
@@ -46,9 +48,11 @@ interface SignupResponse {
   user_id: string;
   pseudonym: string;
   recovery_phrase: string;
+  access_token: string;
 }
 
 export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalProps) {
+  const router = useRouter();
   const [pseudonym, setPseudonym] = useState(generatePseudonym);
   const [avatar, setAvatar] = useState('🦋');
   const [sex, setSex] = useState<Sex>('F');
@@ -57,6 +61,7 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recoveryPhrase, setRecoveryPhrase] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const setUser = useUserStore((s) => s.setUser);
 
@@ -87,6 +92,15 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
       });
 
       setRecoveryPhrase(res.recovery_phrase);
+      setAccessToken(res.access_token);
+
+      // Set the Supabase session so the user is authenticated
+      if (res.access_token) {
+        await supabase.auth.setSession({
+          access_token: res.access_token,
+          refresh_token: '',
+        });
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -103,7 +117,10 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
     return (
       <RecoveryPhrase
         phrase={recoveryPhrase}
-        onContinue={onClose}
+        onContinue={() => {
+          onClose();
+          router.push('/chat');
+        }}
       />
     );
   }
