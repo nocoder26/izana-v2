@@ -88,7 +88,7 @@ export default function PartnerSettings() {
     async function fetchSettings() {
       try {
         const data = await apiGet<VisibilitySettings>(
-          '/api/v1/partner/visibility',
+          '/partner/visibility',
         );
         if (!cancelled) {
           setSettings(data);
@@ -122,7 +122,7 @@ export default function PartnerSettings() {
   const saveSettings = useCallback(async () => {
     setIsSaving(true);
     try {
-      await apiPut('/api/v1/partner/visibility', settings);
+      await apiPut('/partner/visibility', settings);
       setSavedSettings(settings);
       setHasChanges(false);
     } catch {

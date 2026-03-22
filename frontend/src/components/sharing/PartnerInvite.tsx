@@ -27,7 +27,7 @@ export default function PartnerInvite() {
     setIsGenerating(true);
     setError(null);
     try {
-      const data = await apiPost<InviteCode>('/api/v1/partner/invite');
+      const data = await apiPost<InviteCode>('/partner/invite');
       setInviteCode(data);
     } catch (err) {
       setError(

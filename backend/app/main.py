@@ -45,6 +45,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         settings.FRONTEND_URL,
+        "https://izana-chat.netlify.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,

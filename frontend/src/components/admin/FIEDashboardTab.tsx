@@ -266,7 +266,7 @@ export default function FIEDashboardTab() {
       try {
         // Check if FIE feature is enabled
         const featureRes = await apiGet<{ enabled: boolean }>(
-          '/api/v1/admin/features/fie',
+          '/admin/features/fie',
         );
         if (!cancelled) setIsEnabled(featureRes.enabled);
         if (!featureRes.enabled) {
@@ -275,7 +275,7 @@ export default function FIEDashboardTab() {
         }
 
         // Load FIE dashboard data
-        const fieData = await apiGet<FIEData>('/api/v1/admin/fie/dashboard');
+        const fieData = await apiGet<FIEData>('/admin/fie/dashboard');
         if (!cancelled) setData(fieData);
       } catch (err) {
         if (!cancelled)

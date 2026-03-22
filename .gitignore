@@ -42,3 +42,6 @@ backend/knowledge_base/*.pdf
 
 # Logs
 *.log
+
+# Local Netlify folder
+.netlify

@@ -40,7 +40,7 @@ export default function PartnerView() {
     async function fetchDashboard() {
       try {
         const data = await apiGet<PartnerDashboardData>(
-          '/api/v1/partner/dashboard',
+          '/partner/dashboard',
         );
         if (!cancelled) setDashboard(data);
       } catch (err) {
@@ -83,7 +83,7 @@ export default function PartnerView() {
 
       try {
         const reply = await apiPost<{ message: string }>(
-          '/api/v1/partner/chat',
+          '/partner/chat',
           { content: content.trim() },
         );
         setMessages((prev) => [

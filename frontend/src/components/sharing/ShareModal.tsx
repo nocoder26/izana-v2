@@ -75,7 +75,7 @@ export default function ShareModal({
         .filter(([, v]) => v)
         .map(([k]) => k);
 
-      const data = await apiPost<GeneratedReport>('/api/v1/reports/share', {
+      const data = await apiPost<GeneratedReport>('/reports/share', {
         included,
         validDays,
         maxViews,

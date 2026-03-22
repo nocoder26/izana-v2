@@ -72,7 +72,7 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
     setError(null);
 
     try {
-      const res = await apiPost<SignupResponse>('/api/v1/auth/signup', {
+      const res = await apiPost<SignupResponse>('/auth/signup', {
         pseudonym,
         avatar,
         sex,
