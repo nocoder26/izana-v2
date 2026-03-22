@@ -42,7 +42,7 @@ export function BottomNav({ activeTab: controlledTab, onTabChange, className }: 
   return (
     <nav
       className={cn(
-        'fixed bottom-0 left-0 right-0 z-50',
+        'fixed bottom-0 left-0 right-0 z-[100]',
         'bg-canvas-elevated/95 backdrop-blur-md',
         'border-t border-border-default',
         'safe-area-bottom',
