@@ -142,7 +142,7 @@ async def view_shared_report(
                 detail="Invalid or expired share token.",
             )
 
-        token_data = token_resp.data
+        token_data = token_resp.data[0]
 
         # Check expiry
         expires_at = datetime.fromisoformat(
@@ -196,7 +196,7 @@ async def view_shared_report(
                 .execute()
             )
             if journey_resp.data:
-                journey_data = journey_resp.data
+                journey_data = journey_resp.data[0]
 
         if "mood" in includes:
             from datetime import date
@@ -224,7 +224,7 @@ async def view_shared_report(
                 .execute()
             )
             if plan_resp.data:
-                plan_data = plan_resp.data
+                plan_data = plan_resp.data[0]
 
         return PortalReportOut(
             pseudonym=pseudonym,
