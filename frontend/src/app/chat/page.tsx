@@ -5,6 +5,7 @@ import ChatInterface from '@/components/chat/ChatInterface';
 import ConversationalOnboarding from '@/components/onboarding/ConversationalOnboarding';
 import { BottomNav, type TabId } from '@/components/navigation/BottomNav';
 import { apiGet, apiPost, ApiError } from '@/lib/api-client';
+import { useChatStore } from '@/stores/chat-store';
 import type { ChapterInfo } from '@/components/chat/types';
 
 /* ── Treatment type mapping (UI label -> backend enum) ──────── */
@@ -174,6 +175,17 @@ export default function ChatPage() {
 
       // 3. Fetch the active chapter and switch to chat
       await fetchActiveChapter();
+
+      // 4. Add Izana's welcome message
+      const addMessage = useChatStore.getState().addMessage;
+      addMessage({
+        id: `welcome-${Date.now()}`,
+        role: 'assistant',
+        content: "You're all set! I'm creating your plan now. In the meantime, ask me anything.",
+        messageType: 'text',
+        createdAt: new Date().toISOString(),
+      });
+
       setPageState('chat');
     },
     [fetchActiveChapter],

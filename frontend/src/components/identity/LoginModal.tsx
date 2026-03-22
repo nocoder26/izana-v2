@@ -63,6 +63,8 @@ export default function LoginModal({ onClose, onSwitchToSignup }: LoginModalProp
       });
 
       onClose();
+      // Navigate to chat after successful login
+      window.location.href = '/chat';
     } catch (err) {
       setError(
         err instanceof Error

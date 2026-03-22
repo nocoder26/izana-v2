@@ -148,8 +148,16 @@ export default function ContentLibraryPage() {
               ))}
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-text-tertiary text-sm">No content found for this filter.</p>
+            <div className="text-center py-16 px-4">
+              <span className="text-3xl block mb-3">{activeTab === 'exercise' ? '🏋️' : '🧘'}</span>
+              <p className="text-text-primary text-sm font-medium mb-1">
+                No {activeTab} content {selectedPhase !== 'All' ? `for ${selectedPhase}` : 'uploaded yet'}
+              </p>
+              <p className="text-text-tertiary text-xs">
+                {activeTab === 'exercise'
+                  ? 'Exercise content will appear here as your care team adds routines tailored to your phase.'
+                  : 'Meditation sessions will appear here as your care team adds guided practices for your journey.'}
+              </p>
             </div>
           ) : (
             <motion.div

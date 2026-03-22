@@ -1,10 +1,28 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { BottomNav, type TabId } from '@/components/navigation/BottomNav';
+import { apiGet, apiPost } from '@/lib/api-client';
+import { supabase } from '@/lib/supabase/client';
+import ShareModal from '@/components/sharing/ShareModal';
 import type { JourneyPhase } from '@/components/chat/types';
+
+/* ── Types ─────────────────────────────────────────────────── */
+
+type CheckinEntry = {
+  date: string;
+  mood: number;
+  energy?: number;
+};
+
+type ChapterMessage = {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+};
 
 // Placeholder data; in production, fetch from API
 const MOCK_PHASES: JourneyPhase[] = [
@@ -17,14 +35,279 @@ const MOCK_PHASES: JourneyPhase[] = [
   { id: 'tww', name: 'Two-Week Wait', status: 'upcoming', totalDays: 14 },
 ];
 
-const QUICK_ACTIONS = [
-  { emoji: '🩸', label: 'Bloodwork', action: () => alert('Bloodwork upload coming soon! You can upload bloodwork results in the Chat tab.') },
-  { emoji: '📊', label: 'Trends', action: () => alert('Mood and adherence trends will be available after your first week of check-ins.') },
-  { emoji: '🩺', label: 'Doctor', action: () => alert('Share your journey with your doctor — this feature is coming soon!') },
-];
+/* ── Inline Mood Chart (using Recharts) ─────────────────────── */
+
+function MoodTrendsPanel({ onClose }: { onClose: () => void }) {
+  const [history, setHistory] = useState<CheckinEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [ChartComponents, setChartComponents] = useState<{
+    ResponsiveContainer: any;
+    LineChart: any;
+    Line: any;
+    XAxis: any;
+    YAxis: any;
+    Tooltip: any;
+    CartesianGrid: any;
+  } | null>(null);
+
+  useEffect(() => {
+    // Dynamically import Recharts to avoid SSR issues
+    import('recharts').then((mod) => {
+      setChartComponents({
+        ResponsiveContainer: mod.ResponsiveContainer,
+        LineChart: mod.LineChart,
+        Line: mod.Line,
+        XAxis: mod.XAxis,
+        YAxis: mod.YAxis,
+        Tooltip: mod.Tooltip,
+        CartesianGrid: mod.CartesianGrid,
+      });
+    });
+
+    apiGet<{ history: CheckinEntry[] }>('/companion/checkin/history')
+      .then((res) => setHistory(res.history ?? []))
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const chartData = history.map((entry) => ({
+    date: new Date(entry.date).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
+    mood: entry.mood,
+    energy: entry.energy ?? 0,
+  }));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      className="mx-5 mb-4 bg-canvas-elevated rounded-2xl border border-border-default p-4"
+      style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-text-primary">Mood & Energy Trends</h3>
+        <button onClick={onClose} className="text-text-tertiary text-xs hover:text-text-primary">
+          Close
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="h-40 flex items-center justify-center">
+          <p className="text-sm text-text-tertiary">Loading trends...</p>
+        </div>
+      ) : chartData.length === 0 ? (
+        <div className="h-32 flex items-center justify-center">
+          <p className="text-sm text-text-tertiary text-center">
+            No check-in data yet. Complete daily check-ins to see your mood trends here.
+          </p>
+        </div>
+      ) : ChartComponents ? (
+        <div className="h-48">
+          <ChartComponents.ResponsiveContainer width="100%" height="100%">
+            <ChartComponents.LineChart data={chartData}>
+              <ChartComponents.CartesianGrid strokeDasharray="3 3" stroke="var(--border-default, #e5e5e5)" />
+              <ChartComponents.XAxis
+                dataKey="date"
+                tick={{ fontSize: 10, fill: 'var(--text-tertiary, #999)' }}
+                tickLine={false}
+              />
+              <ChartComponents.YAxis
+                domain={[0, 5]}
+                tick={{ fontSize: 10, fill: 'var(--text-tertiary, #999)' }}
+                tickLine={false}
+                width={24}
+              />
+              <ChartComponents.Tooltip
+                contentStyle={{
+                  borderRadius: 12,
+                  border: '1px solid var(--border-default, #e5e5e5)',
+                  fontSize: 12,
+                }}
+              />
+              <ChartComponents.Line
+                type="monotone"
+                dataKey="mood"
+                stroke="#4A3D8F"
+                strokeWidth={2}
+                dot={{ r: 3, fill: '#4A3D8F' }}
+                name="Mood"
+              />
+              <ChartComponents.Line
+                type="monotone"
+                dataKey="energy"
+                stroke="#C4956A"
+                strokeWidth={2}
+                dot={{ r: 3, fill: '#C4956A' }}
+                name="Energy"
+              />
+            </ChartComponents.LineChart>
+          </ChartComponents.ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="h-40 flex items-center justify-center">
+          <p className="text-sm text-text-tertiary">Loading chart...</p>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/* ── Bloodwork Upload Panel ─────────────────────────────────── */
+
+function BloodworkPanel({ onClose }: { onClose: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${apiUrl}/bloodwork/analyze-file`, {
+        method: 'POST',
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {},
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Upload failed');
+      const data = await response.json();
+      setResult(data.summary ?? 'Bloodwork uploaded successfully. Results will appear in your chat.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload bloodwork');
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      className="mx-5 mb-4 bg-canvas-elevated rounded-2xl border border-border-default p-4"
+      style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-text-primary">Upload Bloodwork</h3>
+        <button onClick={onClose} className="text-text-tertiary text-xs hover:text-text-primary">
+          Close
+        </button>
+      </div>
+
+      <p className="text-xs text-text-secondary mb-3">
+        Upload a photo or PDF of your bloodwork results for AI analysis.
+      </p>
+
+      <label
+        className={cn(
+          'flex flex-col items-center gap-2 py-6 rounded-xl border-2 border-dashed cursor-pointer',
+          'border-border-default hover:border-brand-primary/40 transition-colors',
+          uploading && 'opacity-50 pointer-events-none',
+        )}
+      >
+        <span className="text-2xl">{uploading ? '...' : '📄'}</span>
+        <span className="text-xs text-text-secondary">
+          {uploading ? 'Uploading...' : 'Tap to select file'}
+        </span>
+        <input
+          type="file"
+          accept="image/*,.pdf"
+          className="hidden"
+          onChange={handleFileUpload}
+          disabled={uploading}
+        />
+      </label>
+
+      {result && (
+        <p className="text-xs text-success mt-3">{result}</p>
+      )}
+      {error && (
+        <p className="text-xs text-error mt-3">{error}</p>
+      )}
+    </motion.div>
+  );
+}
+
+/* ── Phase Messages Panel ───────────────────────────────────── */
+
+function PhaseMessagesPanel({ phaseId, phaseName, onClose }: { phaseId: string; phaseName: string; onClose: () => void }) {
+  const [messages, setMessages] = useState<ChapterMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiGet<{ messages: ChapterMessage[] }>(`/chapters/${phaseId}/messages`)
+      .then((res) => setMessages(res.messages ?? []))
+      .catch(() => setMessages([]))
+      .finally(() => setLoading(false));
+  }, [phaseId]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      className="mx-5 mb-4 bg-canvas-elevated rounded-2xl border border-border-default p-4 max-h-64 overflow-y-auto"
+      style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-text-primary">{phaseName} Messages</h3>
+        <button onClick={onClose} className="text-text-tertiary text-xs hover:text-text-primary">
+          Close
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-text-tertiary">Loading...</p>
+      ) : messages.length === 0 ? (
+        <p className="text-sm text-text-tertiary">No messages recorded for this phase.</p>
+      ) : (
+        <div className="space-y-2">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={cn(
+                'text-xs p-2 rounded-lg',
+                msg.role === 'assistant' ? 'bg-canvas-sunken text-text-primary' : 'bg-brand-primary-bg text-text-primary',
+              )}
+            >
+              <p>{msg.content}</p>
+              <p className="text-[10px] text-text-tertiary mt-1">
+                {new Date(msg.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/* ── Main Page ──────────────────────────────────────────────── */
 
 export default function JourneyPage() {
   const [activeTab, setActiveTab] = useState<TabId>('journey');
+  const [showBloodwork, setShowBloodwork] = useState(false);
+  const [showTrends, setShowTrends] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedPhase, setSelectedPhase] = useState<JourneyPhase | null>(null);
+
+  const QUICK_ACTIONS = [
+    { emoji: '🩸', label: 'Bloodwork', action: () => setShowBloodwork((v) => !v) },
+    { emoji: '📊', label: 'Trends', action: () => setShowTrends((v) => !v) },
+    { emoji: '🩺', label: 'Doctor', action: () => setShowShareModal(true) },
+  ];
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
@@ -32,6 +315,12 @@ export default function JourneyPage() {
       window.location.href = '/chat';
     } else if (tab === 'you') {
       window.location.href = '/profile';
+    }
+  };
+
+  const handlePhaseClick = (phase: JourneyPhase) => {
+    if (phase.status === 'completed') {
+      setSelectedPhase(selectedPhase?.id === phase.id ? null : phase);
     }
   };
 
@@ -69,6 +358,29 @@ export default function JourneyPage() {
           ))}
         </div>
 
+        {/* Inline Panels */}
+        <AnimatePresence>
+          {showBloodwork && (
+            <BloodworkPanel onClose={() => setShowBloodwork(false)} />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showTrends && (
+            <MoodTrendsPanel onClose={() => setShowTrends(false)} />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {selectedPhase && (
+            <PhaseMessagesPanel
+              phaseId={selectedPhase.id}
+              phaseName={selectedPhase.name}
+              onClose={() => setSelectedPhase(null)}
+            />
+          )}
+        </AnimatePresence>
+
         {/* Timeline */}
         <div className="px-5 py-2">
           <div className="relative">
@@ -85,7 +397,11 @@ export default function JourneyPage() {
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.3, delay: i * 0.08 }}
-                  className="relative flex items-start gap-4 py-3"
+                  className={cn(
+                    'relative flex items-start gap-4 py-3',
+                    phase.status === 'completed' && 'cursor-pointer',
+                  )}
+                  onClick={() => handlePhaseClick(phase)}
                 >
                   {/* Dot */}
                   <div
@@ -116,7 +432,7 @@ export default function JourneyPage() {
                       phase.status === 'active' &&
                         'bg-canvas-elevated border border-brand-primary',
                       phase.status === 'completed' &&
-                        'bg-canvas-sunken',
+                        'bg-canvas-sunken hover:bg-canvas-elevated transition-colors',
                       phase.status === 'upcoming' &&
                         'bg-canvas-sunken opacity-60',
                     )}
@@ -144,7 +460,7 @@ export default function JourneyPage() {
                       )}
                       {phase.status === 'completed' && (
                         <span className="text-xs text-success font-medium">
-                          ✓
+                          ✓ tap to view
                         </span>
                       )}
                     </div>
@@ -160,6 +476,9 @@ export default function JourneyPage() {
           </div>
         </div>
       </div>
+
+      {/* Share Modal (Doctor) */}
+      <ShareModal open={showShareModal} onOpenChange={setShowShareModal} />
 
       {/* Bottom navigation */}
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
