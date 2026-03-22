@@ -185,6 +185,11 @@ function BloodworkPanel({ onClose }: { onClose: () => void }) {
       if (!response.ok) throw new Error('Upload failed');
       const data = await response.json();
       setResult(data.summary ?? 'Bloodwork uploaded successfully. Results will appear in your chat.');
+      // Auto-close and redirect to chat after 2 seconds
+      setTimeout(() => {
+        onClose();
+        window.location.href = '/chat';
+      }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload bloodwork');
     } finally {

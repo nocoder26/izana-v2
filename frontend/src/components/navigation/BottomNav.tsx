@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { useUserStore } from '@/stores/user-store';
+import { supabase } from '@/lib/supabase/client';
 
 export type TabId = 'today' | 'journey' | 'you';
 
@@ -26,7 +26,14 @@ type BottomNavProps = {
 
 export function BottomNav({ activeTab: controlledTab, onTabChange, className }: BottomNavProps) {
   const [internalTab, setInternalTab] = useState<TabId>('today');
-  const isAuthenticated = useUserStore((s) => s.isAuthenticated);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check Supabase session (persists across page reloads, unlike Zustand)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+    });
+  }, []);
 
   const activeTab = controlledTab ?? internalTab;
 
