@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from app.core.auth import get_user_id
 from app.core.config import settings
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.feature_flags import require_feature
 
 logger = logging.getLogger(__name__)

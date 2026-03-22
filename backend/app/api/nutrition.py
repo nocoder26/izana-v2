@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_user_id
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 
 logger = logging.getLogger(__name__)
 

@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_user_id
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.feature_flags import require_feature
 from app.core.logging_config import get_logger
 
