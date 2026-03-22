@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { BottomNav, type TabId } from '@/components/navigation/BottomNav';
@@ -297,6 +298,7 @@ function PhaseMessagesPanel({ phaseId, phaseName, onClose }: { phaseId: string; 
 /* ── Main Page ──────────────────────────────────────────────── */
 
 export default function JourneyPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>('journey');
   const [showBloodwork, setShowBloodwork] = useState(false);
   const [showTrends, setShowTrends] = useState(false);
@@ -310,11 +312,16 @@ export default function JourneyPage() {
   ];
 
   const handleTabChange = (tab: TabId) => {
+    // Close all panels before navigating
+    setShowBloodwork(false);
+    setShowTrends(false);
+    setShowShareModal(false);
+    setSelectedPhase(null);
     setActiveTab(tab);
     if (tab === 'today') {
-      window.location.href = '/chat';
+      router.push('/chat');
     } else if (tab === 'you') {
-      window.location.href = '/profile';
+      router.push('/profile');
     }
   };
 
