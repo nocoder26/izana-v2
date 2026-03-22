@@ -504,7 +504,7 @@ async def get_gamification_summary(
             .limit(1)
             .execute()
         )
-        gam = gam_resp.data or {
+        gam = gam_resp.data[0] if gam_resp.data else {
             "total_points": 0,
             "current_streak": 0,
             "level": 1,

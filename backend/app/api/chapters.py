@@ -221,7 +221,7 @@ async def get_active_chapter(
                 detail="No active chapter found.",
             )
 
-        chapter = chapter_resp.data
+        chapter = chapter_resp.data[0]
         start = datetime.fromisoformat(chapter["started_at"].replace("Z", "+00:00"))
         day = (datetime.now(timezone.utc) - start).days + 1
 
