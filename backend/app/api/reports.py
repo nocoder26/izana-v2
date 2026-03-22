@@ -36,11 +36,21 @@ router = APIRouter()
 class ShareRequest(BaseModel):
     """Payload for generating a share token."""
 
-    includes: list[str] = Field(
-        default_factory=lambda: ["journey", "mood", "plan"],
-        description="Data sections to include in the report.",
-    )
-    expiry_days: int = Field(default=7, ge=1, le=90)
+    includes: Optional[dict] = None  # {"timeline": true, "bloodwork": true, ...}
+    included: Optional[dict] = None  # Frontend sends this name
+    expiry_days: Optional[int] = Field(default=7, ge=1, le=90)
+    validDays: Optional[int] = None  # Frontend sends this name
+    max_views: Optional[int] = Field(default=10, ge=1, le=100)
+    maxViews: Optional[int] = None  # Frontend sends this name
+
+    def get_includes(self) -> dict:
+        return self.includes or self.included or {"timeline": True, "bloodwork": True, "checkins": True}
+
+    def get_expiry_days(self) -> int:
+        return self.expiry_days or self.validDays or 7
+
+    def get_max_views(self) -> int:
+        return self.max_views or self.maxViews or 10
 
 
 class ShareOut(BaseModel):
@@ -87,18 +97,22 @@ async def generate_share_token(
     try:
         share_token = str(uuid4())
         expires_at = (
-            datetime.now(timezone.utc) + timedelta(days=body.expiry_days)
+            datetime.now(timezone.utc) + timedelta(days=body.get_expiry_days())
         ).isoformat()
         now = datetime.now(timezone.utc).isoformat()
 
-        supabase.table("share_tokens").insert(
+        supabase.table("provider_shares").insert(
             {
-                "id": str(uuid4()),
                 "user_id": user_id,
                 "token": share_token,
-                "includes": body.includes,
+                "include_bloodwork": body.get_includes().get("bloodwork", True),
+                "include_checkins": body.get_includes().get("checkins", True),
+                "include_timeline": body.get_includes().get("timeline", True),
+                "include_adherence": body.get_includes().get("adherence", False),
+                "valid_days": body.get_expiry_days(),
+                "max_views": body.get_max_views(),
                 "expires_at": expires_at,
-                "created_at": now,
+                "is_active": True,
             }
         ).execute()
 
@@ -106,7 +120,7 @@ async def generate_share_token(
             share_token=share_token,
             share_url=f"/reports/portal/{share_token}",
             expires_at=expires_at,
-            includes=body.includes,
+            includes=body.get_includes(),
         )
 
     except Exception as exc:
