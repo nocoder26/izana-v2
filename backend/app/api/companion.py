@@ -42,7 +42,6 @@ class JourneyContextOut(BaseModel):
     phase: Optional[str] = None
     day: int = 0
     treatment_type: Optional[str] = None
-    cycle_number: int = 0
     streak: int = 0
 
 
@@ -50,7 +49,10 @@ class CheckinRequest(BaseModel):
     """Daily mood check-in payload."""
 
     mood: str
-    emotions: list[str] = Field(default_factory=list)
+    anxiety: Optional[int] = None
+    hope: Optional[int] = None
+    energy: Optional[int] = None
+    overwhelm: Optional[int] = None
 
     @field_validator("mood")
     @classmethod
@@ -69,7 +71,10 @@ class CheckinOut(BaseModel):
 
     id: str
     mood: str
-    emotions: list[str]
+    anxiety: Optional[int] = None
+    hope: Optional[int] = None
+    energy: Optional[int] = None
+    overwhelm: Optional[int] = None
     date: str
     created_at: str
 
@@ -84,9 +89,9 @@ class SymptomOut(BaseModel):
     """Phase-specific symptom."""
 
     id: str
-    name: str
-    description: str
-    severity: Optional[str] = None
+    symptom: str
+    category: str
+    severity_default: Optional[str] = None
 
 
 class ContentOut(BaseModel):
@@ -132,16 +137,17 @@ async def get_journey_context(
 ) -> JourneyContextOut:
     """Get the user's current journey context for the companion.
 
-    Returns phase, day count, treatment type, cycle number, and streak.
+    Returns phase, day count, treatment type, and streak.
     """
     supabase = get_supabase_client()
 
     try:
+        # Get active treatment journey
         journey_resp = (
-            supabase.table("journeys")
+            supabase.table("treatment_journeys")
             .select("*")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -150,10 +156,11 @@ async def get_journey_context(
 
         journey = journey_resp.data
 
+        # Get active chapter
         chapter_resp = (
             supabase.table("chapters")
             .select("*")
-            .eq("journey_id", journey["id"])
+            .eq("user_id", user_id)
             .eq("status", ChapterStatus.ACTIVE.value)
             .maybe_single()
             .execute()
@@ -164,12 +171,12 @@ async def get_journey_context(
         if chapter_resp.data:
             phase = chapter_resp.data["phase"]
             start = datetime.fromisoformat(
-                chapter_resp.data["start_date"].replace("Z", "+00:00")
+                chapter_resp.data["started_at"].replace("Z", "+00:00")
             )
             day = (datetime.now(timezone.utc) - start).days + 1
 
         gam_resp = (
-            supabase.table("gamification")
+            supabase.table("user_gamification")
             .select("current_streak")
             .eq("user_id", user_id)
             .maybe_single()
@@ -181,7 +188,6 @@ async def get_journey_context(
             phase=phase,
             day=day,
             treatment_type=journey["treatment_type"],
-            cycle_number=journey.get("cycle_number", 1),
             streak=streak,
         )
 
@@ -213,7 +219,7 @@ async def daily_checkin(
     try:
         # Check for existing check-in today (UNIQUE constraint)
         existing = (
-            supabase.table("checkins")
+            supabase.table("emotion_logs")
             .select("id")
             .eq("user_id", user_id)
             .eq("date", today)
@@ -229,28 +235,35 @@ async def daily_checkin(
         checkin_id = str(uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
-        supabase.table("checkins").insert(
-            {
-                "id": checkin_id,
-                "user_id": user_id,
-                "mood": body.mood,
-                "emotions": body.emotions,
-                "date": today,
-                "created_at": now,
-            }
-        ).execute()
+        insert_data: dict = {
+            "id": checkin_id,
+            "user_id": user_id,
+            "mood": body.mood,
+            "date": today,
+            "created_at": now,
+        }
+        if body.anxiety is not None:
+            insert_data["anxiety"] = body.anxiety
+        if body.hope is not None:
+            insert_data["hope"] = body.hope
+        if body.energy is not None:
+            insert_data["energy"] = body.energy
+        if body.overwhelm is not None:
+            insert_data["overwhelm"] = body.overwhelm
+
+        supabase.table("emotion_logs").insert(insert_data).execute()
 
         # Update gamification: +10 points, increment streak
         try:
             gam_resp = (
-                supabase.table("gamification")
+                supabase.table("user_gamification")
                 .select("total_points, current_streak")
                 .eq("user_id", user_id)
                 .maybe_single()
                 .execute()
             )
             if gam_resp.data:
-                supabase.table("gamification").update(
+                supabase.table("user_gamification").update(
                     {
                         "total_points": gam_resp.data["total_points"] + 10,
                         "current_streak": gam_resp.data["current_streak"] + 1,
@@ -262,7 +275,10 @@ async def daily_checkin(
         return CheckinOut(
             id=checkin_id,
             mood=body.mood,
-            emotions=body.emotions,
+            anxiety=body.anxiety,
+            hope=body.hope,
+            energy=body.energy,
+            overwhelm=body.overwhelm,
             date=today,
             created_at=now,
         )
@@ -288,7 +304,7 @@ async def checkin_history(
         cutoff = (date.today() - timedelta(days=30)).isoformat()
 
         resp = (
-            supabase.table("checkins")
+            supabase.table("emotion_logs")
             .select("*")
             .eq("user_id", user_id)
             .gte("date", cutoff)
@@ -300,7 +316,10 @@ async def checkin_history(
             CheckinOut(
                 id=c["id"],
                 mood=c["mood"],
-                emotions=c.get("emotions", []),
+                anxiety=c.get("anxiety"),
+                hope=c.get("hope"),
+                energy=c.get("energy"),
+                overwhelm=c.get("overwhelm"),
                 date=c["date"],
                 created_at=c["created_at"],
             )
@@ -338,10 +357,10 @@ async def get_phase_symptoms(
 
         return [
             SymptomOut(
-                id=s["id"],
-                name=s["name"],
-                description=s.get("description", ""),
-                severity=s.get("severity"),
+                id=str(s["id"]),
+                symptom=s["symptom"],
+                category=s.get("category", ""),
+                severity_default=s.get("severity_default"),
             )
             for s in (resp.data or [])
         ]
@@ -372,7 +391,7 @@ async def get_phase_content(
 
         return [
             ContentOut(
-                id=c["id"],
+                id=str(c["id"]),
                 title=c["title"],
                 body=c.get("body", ""),
                 content_type=c.get("content_type"),
@@ -395,17 +414,18 @@ async def record_outcome(
 ) -> OutcomeResponse:
     """Record a cycle outcome.
 
-    Triggers grief mode if the outcome is negative or chemical.
+    Updates the treatment_journey outcome fields and triggers grief mode
+    if the outcome is negative or chemical.
     """
     supabase = get_supabase_client()
 
     try:
         # Get active journey
         journey_resp = (
-            supabase.table("journeys")
-            .select("id")
+            supabase.table("treatment_journeys")
+            .select("id, cycle_id")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -416,34 +436,45 @@ async def record_outcome(
             )
 
         journey_id = journey_resp.data["id"]
+        cycle_id = journey_resp.data.get("cycle_id")
         now = datetime.now(timezone.utc).isoformat()
+        today = date.today().isoformat()
         grief_mode = body.outcome in ("negative", "chemical")
 
-        # Record outcome
-        supabase.table("outcomes").insert(
+        # Record outcome on the treatment journey
+        supabase.table("treatment_journeys").update(
             {
-                "id": str(uuid4()),
-                "journey_id": journey_id,
-                "user_id": user_id,
                 "outcome": body.outcome,
-                "notes": body.notes,
-                "created_at": now,
+                "outcome_date": today,
+                "outcome_notes": body.notes,
             }
-        ).execute()
+        ).eq("id", journey_id).execute()
+
+        # Also update the cycle if present
+        if cycle_id:
+            supabase.table("cycles").update(
+                {
+                    "outcome": body.outcome,
+                    "completed_at": now,
+                }
+            ).eq("id", cycle_id).execute()
 
         # If negative outcome, update active chapter to grief status
         if grief_mode:
             chapter_resp = (
                 supabase.table("chapters")
                 .select("id")
-                .eq("journey_id", journey_id)
+                .eq("user_id", user_id)
                 .eq("status", ChapterStatus.ACTIVE.value)
                 .maybe_single()
                 .execute()
             )
             if chapter_resp.data:
                 supabase.table("chapters").update(
-                    {"status": ChapterStatus.GRIEF.value}
+                    {
+                        "status": ChapterStatus.GRIEF.value,
+                        "grief_mode": True,
+                    }
                 ).eq("id", chapter_resp.data["id"]).execute()
 
         # If positive outcome, update chapter status
@@ -451,7 +482,7 @@ async def record_outcome(
             chapter_resp = (
                 supabase.table("chapters")
                 .select("id")
-                .eq("journey_id", journey_id)
+                .eq("user_id", user_id)
                 .eq("status", ChapterStatus.ACTIVE.value)
                 .maybe_single()
                 .execute()

@@ -139,13 +139,13 @@ async def generate_invite(
         invite_code = secrets.token_urlsafe(16)
         expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
 
-        supabase.table("partner_invites").insert(
+        supabase.table("partner_links").insert(
             {
                 "id": str(uuid4()),
-                "user_id": user_id,
+                "primary_user_id": user_id,
                 "invite_code": invite_code,
-                "expires_at": expires_at,
-                "used": False,
+                "invite_expires_at": expires_at,
+                "is_active": True,
             }
         ).execute()
 
@@ -174,10 +174,11 @@ async def join_partner(
     try:
         # Look up invite
         invite_resp = (
-            supabase.table("partner_invites")
+            supabase.table("partner_links")
             .select("*")
             .eq("invite_code", body.invite_code)
-            .eq("used", False)
+            .is_("partner_user_id", "null")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -190,43 +191,33 @@ async def join_partner(
         invite = invite_resp.data
 
         # Check expiry
-        expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE,
-                detail="This invite code has expired.",
+        if invite.get("invite_expires_at"):
+            expires_at = datetime.fromisoformat(
+                invite["invite_expires_at"].replace("Z", "+00:00")
             )
+            if datetime.now(timezone.utc) > expires_at:
+                raise HTTPException(
+                    status_code=status.HTTP_410_GONE,
+                    detail="This invite code has expired.",
+                )
 
         # Cannot link to yourself
-        if invite["user_id"] == user_id:
+        if invite["primary_user_id"] == user_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="You cannot link to yourself.",
             )
 
-        now = datetime.now(timezone.utc).isoformat()
-
-        # Mark invite as used
-        supabase.table("partner_invites").update(
-            {"used": True}
+        # Update partner link to set the partner
+        supabase.table("partner_links").update(
+            {"partner_user_id": user_id}
         ).eq("id", invite["id"]).execute()
-
-        # Create partner link
-        supabase.table("partner_links").insert(
-            {
-                "id": str(uuid4()),
-                "user_id": invite["user_id"],
-                "partner_id": user_id,
-                "linked_at": now,
-                "visible_fields": ["mood", "phase", "streak"],
-            }
-        ).execute()
 
         # Get partner pseudonym
         profile_resp = (
             supabase.table("profiles")
             .select("pseudonym")
-            .eq("id", invite["user_id"])
+            .eq("id", invite["primary_user_id"])
             .maybe_single()
             .execute()
         )
@@ -267,7 +258,8 @@ async def get_partner_dashboard(
         link_resp = (
             supabase.table("partner_links")
             .select("*")
-            .eq("partner_id", user_id)
+            .eq("partner_user_id", user_id)
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -278,8 +270,11 @@ async def get_partner_dashboard(
             )
 
         link = link_resp.data
-        linked_user_id = link["user_id"]
-        visible_fields = link.get("visible_fields", [])
+        linked_user_id = link["primary_user_id"]
+        visibility = link.get("visibility_settings") or {}
+
+        # Build visible_fields list from the JSONB settings
+        visible_fields = [k for k, v in visibility.items() if v is True]
 
         # Get partner profile
         profile_resp = (
@@ -295,11 +290,11 @@ async def get_partner_dashboard(
         current_phase = None
         streak = 0
 
-        if "mood" in visible_fields:
+        if visibility.get("mood"):
             from datetime import date as date_type
 
             checkin_resp = (
-                supabase.table("checkins")
+                supabase.table("emotion_logs")
                 .select("mood")
                 .eq("user_id", linked_user_id)
                 .eq("date", date_type.today().isoformat())
@@ -309,30 +304,21 @@ async def get_partner_dashboard(
             if checkin_resp.data:
                 mood_today = checkin_resp.data["mood"]
 
-        if "phase" in visible_fields:
-            journey_resp = (
-                supabase.table("journeys")
-                .select("id")
+        if visibility.get("phase"):
+            chapter_resp = (
+                supabase.table("chapters")
+                .select("phase")
                 .eq("user_id", linked_user_id)
                 .eq("status", "active")
                 .maybe_single()
                 .execute()
             )
-            if journey_resp.data:
-                chapter_resp = (
-                    supabase.table("chapters")
-                    .select("phase")
-                    .eq("journey_id", journey_resp.data["id"])
-                    .eq("status", "active")
-                    .maybe_single()
-                    .execute()
-                )
-                if chapter_resp.data:
-                    current_phase = chapter_resp.data["phase"]
+            if chapter_resp.data:
+                current_phase = chapter_resp.data["phase"]
 
-        if "streak" in visible_fields:
+        if visibility.get("streak") or visibility.get("plan_adherence"):
             gam_resp = (
-                supabase.table("gamification")
+                supabase.table("user_gamification")
                 .select("current_streak")
                 .eq("user_id", linked_user_id)
                 .maybe_single()
@@ -371,33 +357,35 @@ async def get_partner_status(
     supabase = get_supabase_client()
 
     try:
-        # Check if user has a partner link (as either party)
+        # Check if user has a partner link (as primary user)
         link_resp = (
             supabase.table("partner_links")
             .select("*")
-            .eq("user_id", user_id)
+            .eq("primary_user_id", user_id)
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
-        if link_resp.data:
+        if link_resp.data and link_resp.data.get("partner_user_id"):
             profile_resp = (
                 supabase.table("profiles")
                 .select("pseudonym")
-                .eq("id", link_resp.data["partner_id"])
+                .eq("id", link_resp.data["partner_user_id"])
                 .maybe_single()
                 .execute()
             )
             return PartnerStatusOut(
                 linked=True,
                 partner_pseudonym=profile_resp.data["pseudonym"] if profile_resp.data else None,
-                linked_at=link_resp.data.get("linked_at"),
+                linked_at=link_resp.data.get("created_at"),
             )
 
         # Check as partner
         link_resp2 = (
             supabase.table("partner_links")
             .select("*")
-            .eq("partner_id", user_id)
+            .eq("partner_user_id", user_id)
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -405,14 +393,14 @@ async def get_partner_status(
             profile_resp = (
                 supabase.table("profiles")
                 .select("pseudonym")
-                .eq("id", link_resp2.data["user_id"])
+                .eq("id", link_resp2.data["primary_user_id"])
                 .maybe_single()
                 .execute()
             )
             return PartnerStatusOut(
                 linked=True,
                 partner_pseudonym=profile_resp.data["pseudonym"] if profile_resp.data else None,
-                linked_at=link_resp2.data.get("linked_at"),
+                linked_at=link_resp2.data.get("created_at"),
             )
 
         return PartnerStatusOut(linked=False)
@@ -438,10 +426,14 @@ async def update_visibility(
     supabase = get_supabase_client()
 
     try:
+        # Convert list of field names to JSONB visibility_settings
+        visibility_settings = {field: True for field in body.visible_fields}
+
         resp = (
             supabase.table("partner_links")
-            .update({"visible_fields": body.visible_fields})
-            .eq("user_id", user_id)
+            .update({"visibility_settings": visibility_settings})
+            .eq("primary_user_id", user_id)
+            .eq("is_active", True)
             .execute()
         )
         if not resp.data:
@@ -473,9 +465,14 @@ async def revoke_partner_link(
     supabase = get_supabase_client()
 
     try:
-        # Delete link where user is either party
-        supabase.table("partner_links").delete().eq("user_id", user_id).execute()
-        supabase.table("partner_links").delete().eq("partner_id", user_id).execute()
+        # Deactivate links where user is either party
+        supabase.table("partner_links").update(
+            {"is_active": False}
+        ).eq("primary_user_id", user_id).execute()
+
+        supabase.table("partner_links").update(
+            {"is_active": False}
+        ).eq("partner_user_id", user_id).execute()
 
         return {"success": True, "message": "Partner link revoked."}
 
@@ -501,7 +498,7 @@ async def get_gamification_summary(
 
     try:
         gam_resp = (
-            supabase.table("gamification")
+            supabase.table("user_gamification")
             .select("total_points, current_streak, level, level_name")
             .eq("user_id", user_id)
             .maybe_single()

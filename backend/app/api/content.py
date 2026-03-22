@@ -40,10 +40,12 @@ class ContentItem(BaseModel):
     title: str
     description: Optional[str] = None
     content_type: str
-    phase: Optional[str] = None
+    treatment_phases: list[str] = Field(default_factory=list)
+    treatment_types: list[str] = Field(default_factory=list)
     duration_seconds: Optional[int] = None
     thumbnail_url: Optional[str] = None
-    average_rating: Optional[float] = None
+    intensity: Optional[str] = None
+    sort_order: int = 0
 
 
 class ContentLibraryOut(BaseModel):
@@ -78,15 +80,15 @@ class ProgressOut(BaseModel):
 class RatingRequest(BaseModel):
     """Content rating payload."""
 
-    stars: int
+    rating: int
     feedback: Optional[str] = None
 
-    @field_validator("stars")
+    @field_validator("rating")
     @classmethod
-    def validate_stars(cls, v: int) -> int:
+    def validate_rating(cls, v: int) -> int:
         """Ensure rating is between 1 and 5."""
         if v < 1 or v > 5:
-            raise ValueError("Rating must be between 1 and 5 stars.")
+            raise ValueError("Rating must be between 1 and 5.")
         return v
 
 
@@ -94,7 +96,7 @@ class RatingOut(BaseModel):
     """Rating confirmation."""
 
     content_id: str
-    stars: int
+    rating: int
     message: str
 
 
@@ -106,7 +108,7 @@ class RatingOut(BaseModel):
 @router.get("/content/library", response_model=ContentLibraryOut)
 async def browse_content(
     user_id: Annotated[str, Depends(get_user_id)],
-    phase: Optional[str] = Query(default=None, description="Filter by phase"),
+    phase: Optional[str] = Query(default=None, description="Filter by treatment phase"),
     content_type: Optional[str] = Query(default=None, description="Filter by content type"),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
@@ -114,19 +116,24 @@ async def browse_content(
     """Browse the content library with optional filters.
 
     Supports filtering by phase and content type, with pagination.
+    Returns empty list if no content exists (not 500).
     """
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("content_library").select("*", count="exact")
+        query = (
+            supabase.table("wellness_content")
+            .select("*", count="exact")
+            .eq("is_active", True)
+        )
 
         if phase:
-            query = query.eq("phase", phase)
+            query = query.contains("treatment_phases", [phase])
         if content_type:
             query = query.eq("content_type", content_type)
 
         offset = (page - 1) * per_page
-        query = query.order("created_at", desc=True).range(offset, offset + per_page - 1)
+        query = query.order("sort_order", desc=False).range(offset, offset + per_page - 1)
 
         resp = query.execute()
         total = resp.count or 0
@@ -137,10 +144,12 @@ async def browse_content(
                 title=c["title"],
                 description=c.get("description"),
                 content_type=c["content_type"],
-                phase=c.get("phase"),
+                treatment_phases=c.get("treatment_phases") or [],
+                treatment_types=c.get("treatment_types") or [],
                 duration_seconds=c.get("duration_seconds"),
                 thumbnail_url=c.get("thumbnail_url"),
-                average_rating=c.get("average_rating"),
+                intensity=c.get("intensity"),
+                sort_order=c.get("sort_order", 0),
             )
             for c in (resp.data or [])
         ]
@@ -149,10 +158,8 @@ async def browse_content(
 
     except Exception as exc:
         logger.error("Failed to browse content: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve content library.",
-        )
+        # Return empty list rather than 500 if the table is empty or query fails gracefully
+        return ContentLibraryOut(items=[], total=0)
 
 
 @router.get("/content/{content_id}/stream-url", response_model=StreamUrlOut)
@@ -170,8 +177,8 @@ async def get_stream_url(
     try:
         # Verify content exists
         resp = (
-            supabase.table("content_library")
-            .select("id, title, content_type")
+            supabase.table("wellness_content")
+            .select("id, title, content_type, cloudflare_stream_id")
             .eq("id", content_id)
             .maybe_single()
             .execute()
@@ -187,8 +194,10 @@ async def get_stream_url(
             datetime.now(timezone.utc) + timedelta(hours=2)
         ).isoformat()
 
+        stream_id = resp.data.get("cloudflare_stream_id") or content_id
+
         return StreamUrlOut(
-            stream_url=f"https://stream.cloudflare.com/placeholder/{content_id}",
+            stream_url=f"https://stream.cloudflare.com/placeholder/{stream_id}",
             expires_at=expires_at,
         )
 
@@ -218,14 +227,18 @@ async def update_progress(
     try:
         now = datetime.now(timezone.utc).isoformat()
 
+        upsert_data: dict[str, Any] = {
+            "user_id": user_id,
+            "content_id": content_id,
+            "position_seconds": body.position_seconds,
+            "completed": body.completed,
+            "updated_at": now,
+        }
+        if body.completed:
+            upsert_data["completed_at"] = now
+
         supabase.table("content_progress").upsert(
-            {
-                "user_id": user_id,
-                "content_id": content_id,
-                "position_seconds": body.position_seconds,
-                "completed": body.completed,
-                "updated_at": now,
-            },
+            upsert_data,
             on_conflict="user_id,content_id",
         ).execute()
 
@@ -249,7 +262,7 @@ async def rate_content(
     body: RatingRequest,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> RatingOut:
-    """Rate content (1-5 stars with optional feedback).
+    """Rate content (1-5 with optional feedback).
 
     Uses upsert so a user can update their rating.
     """
@@ -258,7 +271,7 @@ async def rate_content(
     try:
         # Verify content exists
         content_resp = (
-            supabase.table("content_library")
+            supabase.table("wellness_content")
             .select("id")
             .eq("id", content_id)
             .maybe_single()
@@ -276,16 +289,16 @@ async def rate_content(
             {
                 "user_id": user_id,
                 "content_id": content_id,
-                "stars": body.stars,
+                "rating": body.rating,
                 "feedback": body.feedback,
-                "updated_at": now,
+                "created_at": now,
             },
             on_conflict="user_id,content_id",
         ).execute()
 
         return RatingOut(
             content_id=content_id,
-            stars=body.stars,
+            rating=body.rating,
             message="Thank you for your feedback!",
         )
 

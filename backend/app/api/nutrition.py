@@ -40,10 +40,10 @@ class WellnessProfileOut(BaseModel):
     """User wellness profile data."""
 
     allergies: list[str] = Field(default_factory=list)
-    dietary_preferences: list[str] = Field(default_factory=list)
+    dietary_restrictions: list[str] = Field(default_factory=list)
+    food_preferences: list[str] = Field(default_factory=list)
     exercise_preferences: list[str] = Field(default_factory=list)
-    supplements: list[str] = Field(default_factory=list)
-    medical_conditions: list[str] = Field(default_factory=list)
+    health_conditions: list[str] = Field(default_factory=list)
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
 
@@ -52,10 +52,10 @@ class WellnessProfileUpdate(BaseModel):
     """Payload for updating the wellness profile."""
 
     allergies: Optional[list[str]] = None
-    dietary_preferences: Optional[list[str]] = None
+    dietary_restrictions: Optional[list[str]] = None
+    food_preferences: Optional[list[str]] = None
     exercise_preferences: Optional[list[str]] = None
-    supplements: Optional[list[str]] = None
-    medical_conditions: Optional[list[str]] = None
+    health_conditions: Optional[list[str]] = None
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
 
@@ -65,7 +65,6 @@ class MealLogRequest(BaseModel):
 
     meal_type: str  # breakfast, lunch, dinner, snack
     description: Optional[str] = None
-    plan_item_id: Optional[str] = None
 
 
 class MealLogOut(BaseModel):
@@ -83,8 +82,6 @@ class ActivityLogRequest(BaseModel):
 
     activity_type: str
     duration_minutes: Optional[int] = None
-    description: Optional[str] = None
-    plan_item_id: Optional[str] = None
 
 
 class ActivityLogOut(BaseModel):
@@ -113,8 +110,9 @@ class PlanOut(BaseModel):
 
     id: str
     status: str
-    plan_data: Any = None
-    approved_at: Optional[str] = None
+    nutrition_plan: Any = None
+    exercise_plan: Any = None
+    mental_health_plan: Any = None
     created_at: str
 
 
@@ -142,8 +140,8 @@ async def get_wellness_profile(
         resp = (
             supabase.table("profiles")
             .select(
-                "allergies, dietary_preferences, exercise_preferences, "
-                "supplements, medical_conditions, height_cm, weight_kg"
+                "allergies, dietary_restrictions, food_preferences, "
+                "exercise_preferences, health_conditions, height_cm, weight_kg"
             )
             .eq("id", user_id)
             .maybe_single()
@@ -154,10 +152,10 @@ async def get_wellness_profile(
 
         return WellnessProfileOut(
             allergies=resp.data.get("allergies") or [],
-            dietary_preferences=resp.data.get("dietary_preferences") or [],
+            dietary_restrictions=resp.data.get("dietary_restrictions") or [],
+            food_preferences=resp.data.get("food_preferences") or [],
             exercise_preferences=resp.data.get("exercise_preferences") or [],
-            supplements=resp.data.get("supplements") or [],
-            medical_conditions=resp.data.get("medical_conditions") or [],
+            health_conditions=resp.data.get("health_conditions") or [],
             height_cm=resp.data.get("height_cm"),
             weight_kg=resp.data.get("weight_kg"),
         )
@@ -182,14 +180,14 @@ async def update_wellness_profile(
         update_data: dict[str, Any] = {}
         if body.allergies is not None:
             update_data["allergies"] = body.allergies
-        if body.dietary_preferences is not None:
-            update_data["dietary_preferences"] = body.dietary_preferences
+        if body.dietary_restrictions is not None:
+            update_data["dietary_restrictions"] = body.dietary_restrictions
+        if body.food_preferences is not None:
+            update_data["food_preferences"] = body.food_preferences
         if body.exercise_preferences is not None:
             update_data["exercise_preferences"] = body.exercise_preferences
-        if body.supplements is not None:
-            update_data["supplements"] = body.supplements
-        if body.medical_conditions is not None:
-            update_data["medical_conditions"] = body.medical_conditions
+        if body.health_conditions is not None:
+            update_data["health_conditions"] = body.health_conditions
         if body.height_cm is not None:
             update_data["height_cm"] = body.height_cm
         if body.weight_kg is not None:
@@ -239,8 +237,6 @@ async def log_meal(
                 "user_id": user_id,
                 "meal_type": body.meal_type,
                 "description": body.description,
-                "plan_item_id": body.plan_item_id,
-                "points_earned": points,
                 "created_at": now,
             }
         ).execute()
@@ -248,14 +244,14 @@ async def log_meal(
         # Update gamification
         try:
             gam_resp = (
-                supabase.table("gamification")
+                supabase.table("user_gamification")
                 .select("total_points")
                 .eq("user_id", user_id)
                 .maybe_single()
                 .execute()
             )
             if gam_resp.data:
-                supabase.table("gamification").update(
+                supabase.table("user_gamification").update(
                     {"total_points": gam_resp.data["total_points"] + points}
                 ).eq("user_id", user_id).execute()
         except Exception as gam_exc:
@@ -300,9 +296,6 @@ async def log_activity(
                 "user_id": user_id,
                 "activity_type": body.activity_type,
                 "duration_minutes": body.duration_minutes,
-                "description": body.description,
-                "plan_item_id": body.plan_item_id,
-                "points_earned": points,
                 "created_at": now,
             }
         ).execute()
@@ -310,14 +303,14 @@ async def log_activity(
         # Update gamification
         try:
             gam_resp = (
-                supabase.table("gamification")
+                supabase.table("user_gamification")
                 .select("total_points")
                 .eq("user_id", user_id)
                 .maybe_single()
                 .execute()
             )
             if gam_resp.data:
-                supabase.table("gamification").update(
+                supabase.table("user_gamification").update(
                     {"total_points": gam_resp.data["total_points"] + points}
                 ).eq("user_id", user_id).execute()
         except Exception as gam_exc:
@@ -373,7 +366,7 @@ async def get_dashboard(
 
         # Get gamification data
         gam_resp = (
-            supabase.table("gamification")
+            supabase.table("user_gamification")
             .select("total_points, current_streak, level, level_name")
             .eq("user_id", user_id)
             .maybe_single()
@@ -412,10 +405,10 @@ async def get_current_plan(
 
     try:
         resp = (
-            supabase.table("plans")
+            supabase.table("personalized_plans")
             .select("*")
             .eq("user_id", user_id)
-            .in_("status", ["approved", "modified"])
+            .in_("status", ["APPROVED", "MODIFIED"])
             .order("created_at", desc=True)
             .limit(1)
             .maybe_single()
@@ -430,8 +423,9 @@ async def get_current_plan(
         return PlanOut(
             id=resp.data["id"],
             status=resp.data["status"],
-            plan_data=resp.data.get("plan_data"),
-            approved_at=resp.data.get("approved_at"),
+            nutrition_plan=resp.data.get("nutrition_plan"),
+            exercise_plan=resp.data.get("exercise_plan"),
+            mental_health_plan=resp.data.get("mental_health_plan"),
             created_at=resp.data["created_at"],
         )
 
@@ -457,7 +451,7 @@ async def get_plan_status(
 
     try:
         resp = (
-            supabase.table("plans")
+            supabase.table("personalized_plans")
             .select("id, status")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
@@ -473,13 +467,13 @@ async def get_plan_status(
 
         status_val = resp.data["status"]
         messages = {
-            "generating": "Your plan is being generated...",
-            "pending_nutritionist": "Your plan is waiting for nutritionist review.",
-            "in_review": "A nutritionist is currently reviewing your plan.",
-            "approved": "Your plan has been approved!",
-            "modified": "Your plan has been reviewed and customised.",
-            "rejected": "Your plan needs to be regenerated.",
-            "expired": "Your plan has expired. A new one will be generated.",
+            "GENERATING": "Your plan is being generated...",
+            "PENDING_NUTRITIONIST": "Your plan is waiting for nutritionist review.",
+            "IN_REVIEW": "A nutritionist is currently reviewing your plan.",
+            "APPROVED": "Your plan has been approved!",
+            "MODIFIED": "Your plan has been reviewed and customised.",
+            "REJECTED": "Your plan needs to be regenerated.",
+            "EXPIRED": "Your plan has expired. A new one will be generated.",
         }
 
         return PlanStatusOut(

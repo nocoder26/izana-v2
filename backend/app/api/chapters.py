@@ -62,21 +62,21 @@ class ChapterOut(BaseModel):
     """Serialised chapter record."""
 
     id: str
-    journey_id: str
+    journey_id: Optional[str] = None
     phase: str
     status: str
-    start_date: str
-    end_date: Optional[str] = None
+    started_at: str
+    ended_at: Optional[str] = None
 
 
 class ActiveChapterOut(BaseModel):
     """Active chapter with computed fields."""
 
     id: str
-    journey_id: str
+    journey_id: Optional[str] = None
     phase: str
     status: str
-    start_date: str
+    started_at: str
     day: int
     streak: int
 
@@ -117,9 +117,9 @@ class JourneyOut(BaseModel):
     id: str
     user_id: str
     treatment_type: str
-    cycle_number: int
-    status: str
-    created_at: str
+    phase: str
+    is_active: bool
+    started_at: str
 
 
 class TransitionRequest(BaseModel):
@@ -149,17 +149,17 @@ async def list_chapters(
 ) -> list[ChapterOut]:
     """List all chapters for the current cycle.
 
-    Returns chapters ordered by start_date descending.
+    Returns chapters ordered by started_at descending.
     """
     supabase = get_supabase_client()
 
     try:
-        # Get active journey first
+        # Get active treatment journey first
         journey_resp = (
-            supabase.table("journeys")
+            supabase.table("treatment_journeys")
             .select("id")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -172,10 +172,20 @@ async def list_chapters(
             supabase.table("chapters")
             .select("*")
             .eq("journey_id", journey_id)
-            .order("start_date", desc=True)
+            .order("started_at", desc=True)
             .execute()
         )
-        return [ChapterOut(**c) for c in (chapters_resp.data or [])]
+        return [
+            ChapterOut(
+                id=c["id"],
+                journey_id=c.get("journey_id"),
+                phase=c["phase"],
+                status=c["status"],
+                started_at=c["started_at"],
+                ended_at=c.get("ended_at"),
+            )
+            for c in (chapters_resp.data or [])
+        ]
 
     except Exception as exc:
         logger.error("Failed to list chapters: %s", exc)
@@ -196,26 +206,11 @@ async def get_active_chapter(
     supabase = get_supabase_client()
 
     try:
-        journey_resp = (
-            supabase.table("journeys")
-            .select("id")
-            .eq("user_id", user_id)
-            .eq("status", "active")
-            .maybe_single()
-            .execute()
-        )
-        if not journey_resp.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active journey found.",
-            )
-
-        journey_id = journey_resp.data["id"]
-
+        # Query chapters directly by user_id and status
         chapter_resp = (
             supabase.table("chapters")
             .select("*")
-            .eq("journey_id", journey_id)
+            .eq("user_id", user_id)
             .eq("status", ChapterStatus.ACTIVE.value)
             .maybe_single()
             .execute()
@@ -227,12 +222,12 @@ async def get_active_chapter(
             )
 
         chapter = chapter_resp.data
-        start = datetime.fromisoformat(chapter["start_date"].replace("Z", "+00:00"))
+        start = datetime.fromisoformat(chapter["started_at"].replace("Z", "+00:00"))
         day = (datetime.now(timezone.utc) - start).days + 1
 
-        # Get streak from gamification
+        # Get streak from user_gamification
         gam_resp = (
-            supabase.table("gamification")
+            supabase.table("user_gamification")
             .select("current_streak")
             .eq("user_id", user_id)
             .maybe_single()
@@ -242,10 +237,10 @@ async def get_active_chapter(
 
         return ActiveChapterOut(
             id=chapter["id"],
-            journey_id=chapter["journey_id"],
+            journey_id=chapter.get("journey_id"),
             phase=chapter["phase"],
             status=chapter["status"],
-            start_date=chapter["start_date"],
+            started_at=chapter["started_at"],
             day=day,
             streak=streak,
         )
@@ -274,10 +269,10 @@ async def get_chapter_messages(
     supabase = get_supabase_client()
 
     try:
-        # Verify chapter belongs to user's journey
+        # Verify chapter belongs to user
         chapter_resp = (
             supabase.table("chapters")
-            .select("journey_id")
+            .select("id, user_id")
             .eq("id", chapter_id)
             .maybe_single()
             .execute()
@@ -288,14 +283,7 @@ async def get_chapter_messages(
                 detail="Chapter not found.",
             )
 
-        journey_resp = (
-            supabase.table("journeys")
-            .select("user_id")
-            .eq("id", chapter_resp.data["journey_id"])
-            .maybe_single()
-            .execute()
-        )
-        if not journey_resp.data or journey_resp.data["user_id"] != user_id:
+        if chapter_resp.data["user_id"] != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied.",
@@ -360,8 +348,8 @@ async def create_journey(
 ) -> JourneyOut:
     """Create a new treatment journey.
 
-    Creates the journey record and an initial chapter for the first phase
-    of the selected treatment type.
+    Creates a cycle, then the treatment_journey record, and an initial
+    chapter for the first phase of the selected treatment type.
     """
     supabase = get_supabase_client()
 
@@ -376,10 +364,10 @@ async def create_journey(
     try:
         # Check for existing active journey
         existing = (
-            supabase.table("journeys")
+            supabase.table("treatment_journeys")
             .select("id")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -393,29 +381,44 @@ async def create_journey(
         phases = PHASE_ORDER.get(body.treatment_type, [])
         initial_phase = body.initial_phase or (phases[0] if phases else "unknown")
 
-        journey_id = str(uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
-        # Create journey
-        supabase.table("journeys").insert(
+        # 1. Create cycle
+        cycle_id = str(uuid4())
+        supabase.table("cycles").insert(
             {
-                "id": journey_id,
+                "id": cycle_id,
                 "user_id": user_id,
                 "treatment_type": body.treatment_type,
                 "cycle_number": 1,
-                "status": "active",
-                "created_at": now,
+                "started_at": now,
             }
         ).execute()
 
-        # Create initial chapter
+        # 2. Create treatment journey
+        journey_id = str(uuid4())
+        supabase.table("treatment_journeys").insert(
+            {
+                "id": journey_id,
+                "user_id": user_id,
+                "cycle_id": cycle_id,
+                "treatment_type": body.treatment_type,
+                "phase": initial_phase,
+                "is_active": True,
+                "started_at": now,
+            }
+        ).execute()
+
+        # 3. Create initial chapter
         supabase.table("chapters").insert(
             {
                 "id": str(uuid4()),
+                "user_id": user_id,
                 "journey_id": journey_id,
+                "cycle_id": cycle_id,
                 "phase": initial_phase,
                 "status": ChapterStatus.ACTIVE.value,
-                "start_date": now,
+                "started_at": now,
             }
         ).execute()
 
@@ -423,9 +426,9 @@ async def create_journey(
             id=journey_id,
             user_id=user_id,
             treatment_type=body.treatment_type,
-            cycle_number=1,
-            status="active",
-            created_at=now,
+            phase=initial_phase,
+            is_active=True,
+            started_at=now,
         )
 
     except HTTPException:
@@ -447,10 +450,10 @@ async def get_active_journey(
 
     try:
         resp = (
-            supabase.table("journeys")
+            supabase.table("treatment_journeys")
             .select("*")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -460,7 +463,14 @@ async def get_active_journey(
                 detail="No active journey found.",
             )
 
-        return JourneyOut(**resp.data)
+        return JourneyOut(
+            id=resp.data["id"],
+            user_id=resp.data["user_id"],
+            treatment_type=resp.data["treatment_type"],
+            phase=resp.data["phase"],
+            is_active=resp.data["is_active"],
+            started_at=resp.data["started_at"],
+        )
 
     except HTTPException:
         raise
@@ -481,18 +491,18 @@ async def transition_phase(
 
     Accepts any valid phase for the treatment type. If the transition is
     non-sequential, returns a confirmation prompt. On confirm: closes
-    the current chapter, creates a new chapter, and triggers plan
-    generation placeholder.
+    the current chapter, creates a new chapter, updates journey phase,
+    and triggers plan generation placeholder.
     """
     supabase = get_supabase_client()
 
     try:
         # Get active journey
         journey_resp = (
-            supabase.table("journeys")
+            supabase.table("treatment_journeys")
             .select("*")
             .eq("user_id", user_id)
-            .eq("status", "active")
+            .eq("is_active", True)
             .maybe_single()
             .execute()
         )
@@ -517,6 +527,7 @@ async def transition_phase(
         chapter_resp = (
             supabase.table("chapters")
             .select("*")
+            .eq("user_id", user_id)
             .eq("journey_id", journey["id"])
             .eq("status", ChapterStatus.ACTIVE.value)
             .maybe_single()
@@ -552,7 +563,7 @@ async def transition_phase(
         supabase.table("chapters").update(
             {
                 "status": ChapterStatus.COMPLETED.value,
-                "end_date": now,
+                "ended_at": now,
             }
         ).eq("id", current_chapter["id"]).execute()
 
@@ -561,12 +572,19 @@ async def transition_phase(
         supabase.table("chapters").insert(
             {
                 "id": new_chapter_id,
+                "user_id": user_id,
                 "journey_id": journey["id"],
+                "cycle_id": journey.get("cycle_id"),
                 "phase": body.target_phase,
                 "status": ChapterStatus.ACTIVE.value,
-                "start_date": now,
+                "started_at": now,
             }
         ).execute()
+
+        # Update journey phase
+        supabase.table("treatment_journeys").update(
+            {"phase": body.target_phase}
+        ).eq("id", journey["id"]).execute()
 
         # TODO: Trigger plan generation placeholder
         logger.info(
