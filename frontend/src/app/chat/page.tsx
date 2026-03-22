@@ -61,23 +61,33 @@ export default function ChatPage() {
 
     async function checkOnboarding() {
       try {
-        // If the user already has a wellness profile, skip onboarding
-        await apiGet('/nutrition/wellness-profile');
+        // Check if the user has COMPLETED onboarding (not just has a profile row)
+        const profile = await apiGet<{
+          allergies: string[];
+          exercise_preferences: string[];
+          health_conditions: string[];
+          age_range: string | null;
+        }>('/nutrition/wellness-profile');
         if (cancelled) return;
 
-        // User has a profile — try to load the active chapter
-        await fetchActiveChapter();
-        if (!cancelled) setPageState('chat');
+        // Profile exists but check if onboarding was actually completed
+        // (signup creates empty profile — onboarding fills it)
+        const hasCompletedOnboarding = profile.age_range !== null
+          || (profile.exercise_preferences && profile.exercise_preferences.length > 0)
+          || (profile.allergies && profile.allergies.length > 0);
+
+        if (hasCompletedOnboarding) {
+          // User completed onboarding — load chat
+          await fetchActiveChapter();
+          if (!cancelled) setPageState('chat');
+        } else {
+          // Profile exists but empty — show onboarding
+          if (!cancelled) setPageState('onboarding');
+        }
       } catch (err) {
         if (cancelled) return;
-        // 404 means no profile yet — show onboarding
-        if (err instanceof ApiError && err.status === 404) {
-          setPageState('onboarding');
-        } else {
-          // Network error or other issue — still show onboarding
-          // so the user isn't stuck on a blank page
-          setPageState('onboarding');
-        }
+        // Any error (404, 401, network) — show onboarding
+        setPageState('onboarding');
       }
     }
 
@@ -128,12 +138,17 @@ export default function ChatPage() {
         // 1. Save wellness profile
         await apiPost('/nutrition/wellness-profile', {
           allergies: data.allergies.filter((a) => a !== 'None'),
-          dietary_preferences: [
-            data.dietaryStyle,
-            ...data.cuisines,
-          ].filter(Boolean),
+          dietary_restrictions: data.allergies.filter((a) => a !== 'None').map((a) => `${a.toLowerCase()}-free`),
+          food_preferences: [data.dietaryStyle, ...data.cuisines].filter(Boolean),
           exercise_preferences: data.exercisePrefs,
-          medical_conditions: data.healthConditions.filter((c) => c !== 'None'),
+          health_conditions: data.healthConditions.filter((c) => c !== 'None'),
+          fitness_level: data.activityLevel?.toLowerCase() || 'moderate',
+          smoking_status: data.smoking?.toLowerCase() || 'never',
+          alcohol_consumption: data.alcohol?.toLowerCase() || 'none',
+          sleep_duration: data.sleep || '7-8h',
+          stress_level: data.stress?.toLowerCase() || 'sometimes',
+          age_range: data.ageRange || '31-35',
+          exercise_time_minutes: parseInt(data.exerciseTime || '20') || 20,
         });
       } catch {
         // Continue even if profile save fails — journey creation matters too
