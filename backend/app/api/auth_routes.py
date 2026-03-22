@@ -282,7 +282,7 @@ async def auth_signup(body: SignupRequest) -> SignupResponse:
         ).execute()
 
         # Step 3: Insert gamification row
-        supabase.table("gamification").insert(
+        supabase.table("user_gamification").insert(
             {
                 "user_id": created_user_id,
                 "total_points": 0,
