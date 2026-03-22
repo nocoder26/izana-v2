@@ -1,23 +1,171 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ChatInterface from '@/components/chat/ChatInterface';
+import ConversationalOnboarding from '@/components/onboarding/ConversationalOnboarding';
 import { BottomNav, type TabId } from '@/components/navigation/BottomNav';
+import { apiGet, apiPost, ApiError } from '@/lib/api-client';
 import type { ChapterInfo } from '@/components/chat/types';
 
-// In production, fetch from API; using placeholder data for now
-const MOCK_CHAPTER: ChapterInfo = {
-  phaseName: 'stims',
-  day: 8,
-  streak: 2,
+/* ── Treatment type mapping (UI label -> backend enum) ──────── */
+
+const TREATMENT_TYPE_MAP: Record<string, string> = {
+  IVF: 'ivf',
+  IUI: 'iui',
+  Natural: 'natural',
+  'Egg freezing': 'egg_freezing',
+  Exploring: 'exploring',
 };
+
+/* ── Phase mapping (UI label -> backend enum) ────────────────── */
+
+const PHASE_MAP: Record<string, string> = {
+  // IVF
+  Baseline: 'initial_consultation',
+  Stims: 'ovarian_stimulation',
+  Retrieval: 'egg_retrieval',
+  Transfer: 'embryo_transfer',
+  TWW: 'two_week_wait',
+  'Between cycles': 'outcome',
+  // IUI
+  Medication: 'ovarian_stimulation',
+  Monitoring: 'monitoring',
+  Insemination: 'insemination',
+  // Natural
+  Follicular: 'preconception',
+  Ovulation: 'fertile_window',
+  Luteal: 'two_week_wait',
+  // Egg freezing
+  Recovery: 'recovery',
+  // Exploring
+  'Just starting research': 'learning',
+  'Choosing a clinic': 'lifestyle_optimisation',
+  'Waiting for appointment': 'diagnostic_testing',
+};
+
+type PageState = 'loading' | 'onboarding' | 'chat';
 
 export default function ChatPage() {
   const [activeTab, setActiveTab] = useState<TabId>('today');
+  const [pageState, setPageState] = useState<PageState>('loading');
+  const [chapter, setChapter] = useState<ChapterInfo>({
+    phaseName: 'Getting started',
+    day: 1,
+    streak: 0,
+  });
+
+  /* ── Check whether onboarding is needed ──────────────────── */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkOnboarding() {
+      try {
+        // If the user already has a wellness profile, skip onboarding
+        await apiGet('/nutrition/wellness-profile');
+        if (cancelled) return;
+
+        // User has a profile — try to load the active chapter
+        await fetchActiveChapter();
+        if (!cancelled) setPageState('chat');
+      } catch (err) {
+        if (cancelled) return;
+        // 404 means no profile yet — show onboarding
+        if (err instanceof ApiError && err.status === 404) {
+          setPageState('onboarding');
+        } else {
+          // Network error or other issue — still show onboarding
+          // so the user isn't stuck on a blank page
+          setPageState('onboarding');
+        }
+      }
+    }
+
+    checkOnboarding();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Fetch active chapter from backend ───────────────────── */
+
+  const fetchActiveChapter = useCallback(async () => {
+    try {
+      const data = await apiGet<{
+        phase: string;
+        day: number;
+        streak: number;
+      }>('/chapters/active');
+      setChapter({
+        phaseName: data.phase,
+        day: data.day,
+        streak: data.streak,
+      });
+    } catch {
+      // No active chapter yet — keep the default "Getting started"
+    }
+  }, []);
+
+  /* ── Onboarding completion handler ───────────────────────── */
+
+  const handleOnboardingComplete = useCallback(
+    async (data: {
+      treatmentType: string | null;
+      currentPhase: string | null;
+      dayInPhase: number | null;
+      ageRange: string | null;
+      healthConditions: string[];
+      activityLevel: string | null;
+      smoking: string | null;
+      alcohol: string | null;
+      sleep: string | null;
+      stress: string | null;
+      allergies: string[];
+      dietaryStyle: string | null;
+      cuisines: string[];
+      exercisePrefs: string[];
+      exerciseTime: string | null;
+    }) => {
+      try {
+        // 1. Save wellness profile
+        await apiPost('/nutrition/wellness-profile', {
+          allergies: data.allergies.filter((a) => a !== 'None'),
+          dietary_preferences: [
+            data.dietaryStyle,
+            ...data.cuisines,
+          ].filter(Boolean),
+          exercise_preferences: data.exercisePrefs,
+          medical_conditions: data.healthConditions.filter((c) => c !== 'None'),
+        });
+      } catch {
+        // Continue even if profile save fails — journey creation matters too
+      }
+
+      try {
+        // 2. Create the treatment journey
+        const treatmentType =
+          TREATMENT_TYPE_MAP[data.treatmentType ?? ''] ?? 'exploring';
+        const initialPhase = data.currentPhase
+          ? PHASE_MAP[data.currentPhase] ?? undefined
+          : undefined;
+
+        await apiPost('/journey', {
+          treatment_type: treatmentType,
+          initial_phase: initialPhase,
+        });
+      } catch {
+        // Journey might already exist (409) — that's okay
+      }
+
+      // 3. Fetch the active chapter and switch to chat
+      await fetchActiveChapter();
+      setPageState('chat');
+    },
+    [fetchActiveChapter],
+  );
+
+  /* ── Tab navigation ──────────────────────────────────────── */
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    // In production, use Next.js router to navigate
     if (tab === 'journey') {
       window.location.href = '/journey';
     } else if (tab === 'you') {
@@ -25,11 +173,34 @@ export default function ChatPage() {
     }
   };
 
+  /* ── Render ──────────────────────────────────────────────── */
+
+  if (pageState === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-dvh bg-canvas-base">
+        <div className="flex flex-col items-center gap-3">
+          <div className="izana-avatar flex items-center justify-center" style={{ width: 40, height: 40 }}>
+            <span className="text-white text-lg">&#10022;</span>
+          </div>
+          <p className="text-sm text-text-tertiary">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageState === 'onboarding') {
+    return (
+      <div className="flex flex-col h-dvh bg-canvas-base" style={{ minHeight: '100vh' }}>
+        <ConversationalOnboarding onComplete={handleOnboardingComplete} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-dvh bg-canvas-base" style={{ minHeight: '100vh' }}>
-      {/* Main chat area — takes all available space above bottom nav */}
+      {/* Main chat area */}
       <div className="flex-1 min-h-0 pb-[52px]">
-        <ChatInterface chapter={MOCK_CHAPTER} />
+        <ChatInterface chapter={chapter} />
       </div>
 
       {/* Bottom navigation */}

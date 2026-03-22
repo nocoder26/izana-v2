@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/stores/chat-store';
 import { apiPost } from '@/lib/api-client';
+import { supabase } from '@/lib/supabase/client';
 import ChapterHeader from './ChapterHeader';
 import ChatMessageList from './ChatMessageList';
 import SearchAnimation from './SearchAnimation';
@@ -61,13 +62,23 @@ export default function ChatInterface({ chapter }: ChatInterfaceProps) {
       setSearchStage(0);
 
       try {
-        // Stage progression simulation via SSE
+        // Get auth token for SSE request
+        const { data: { session } } = await supabase.auth.getSession();
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        // POST to /chat/stream SSE endpoint
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? ''}/companion/chat`,
+          `${apiUrl}/chat/stream`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text.trim() }),
+            headers,
+            body: JSON.stringify({ content: text.trim() }),
           },
         );
 
@@ -80,70 +91,92 @@ export default function ChatInterface({ chapter }: ChatInterfaceProps) {
         const assistantId = `assistant-${Date.now()}`;
         let fullContent = '';
         let assistantAdded = false;
+        let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n').filter(Boolean);
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE events from buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          let currentEventType = '';
+          let currentData = '';
 
           for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6);
-            if (payload === '[DONE]') break;
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6);
+            } else if (line === '' && currentEventType) {
+              // Empty line = end of SSE event, process it
+              try {
+                const payload = JSON.parse(currentData || '{}');
 
-            try {
-              const event = JSON.parse(payload);
-
-              // Search stage updates
-              if (event.type === 'stage') {
-                setSearchStage(event.stage);
-                if (event.sources) setSearchSources(event.sources);
-                continue;
-              }
-
-              // Text content
-              if (event.type === 'content' || event.type === 'delta') {
-                fullContent += event.content ?? event.delta ?? '';
-
-                if (!assistantAdded) {
-                  addMessage({
-                    id: assistantId,
-                    role: 'assistant',
-                    content: fullContent,
-                    messageType: 'text',
-                    createdAt: new Date().toISOString(),
-                  });
-                  assistantAdded = true;
-                } else {
-                  updateMessage(assistantId, { content: fullContent });
+                // Search stage updates
+                if (currentEventType === 'stage') {
+                  setSearchStage(typeof payload.stage === 'number' ? payload.stage : 0);
+                  if (payload.sources) setSearchSources(payload.sources);
                 }
-              }
 
-              // Card messages
-              if (event.type === 'card') {
-                addMessage({
-                  id: `card-${Date.now()}`,
-                  role: 'assistant',
-                  content: event.text ?? '',
-                  messageType: event.cardType,
-                  cardData: event.cardData,
-                  createdAt: new Date().toISOString(),
-                });
-              }
+                // Token streaming
+                if (currentEventType === 'token') {
+                  fullContent += payload.text ?? '';
+                  setSearchStage(undefined); // Past search stages
 
-              // Sources
-              if (event.type === 'sources' && assistantAdded) {
-                updateMessage(assistantId, { sources: event.sources });
-              }
+                  if (!assistantAdded) {
+                    addMessage({
+                      id: assistantId,
+                      role: 'assistant',
+                      content: fullContent,
+                      messageType: 'text',
+                      createdAt: new Date().toISOString(),
+                    });
+                    assistantAdded = true;
+                  } else {
+                    updateMessage(assistantId, { content: fullContent });
+                  }
+                }
 
-              // Follow-up suggestions
-              if (event.type === 'followups' && assistantAdded) {
-                updateMessage(assistantId, { followUps: event.questions });
+                // Source events
+                if (currentEventType === 'source') {
+                  setSearchSources((prev) => [
+                    ...prev,
+                    { id: String(prev.length), title: payload.title ?? '', url: payload.url },
+                  ]);
+                }
+
+                // Follow-up suggestions
+                if (currentEventType === 'followups' && assistantAdded) {
+                  updateMessage(assistantId, { followUps: payload.questions });
+                }
+
+                // Error from backend
+                if (currentEventType === 'error') {
+                  if (!assistantAdded) {
+                    addMessage({
+                      id: assistantId,
+                      role: 'assistant',
+                      content: payload.message ?? 'Something went wrong.',
+                      messageType: 'text',
+                      createdAt: new Date().toISOString(),
+                    });
+                    assistantAdded = true;
+                  }
+                }
+
+                // Done
+                if (currentEventType === 'done') {
+                  // Stream complete
+                }
+              } catch {
+                // Skip malformed JSON
               }
-            } catch {
-              // Skip malformed JSON
+              currentEventType = '';
+              currentData = '';
             }
           }
         }

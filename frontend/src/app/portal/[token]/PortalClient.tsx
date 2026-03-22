@@ -282,7 +282,7 @@ export default function ProviderPortalPage() {
     async function fetchReport() {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-        const res = await fetch(`${apiUrl}/api/v1/reports/portal/${token}`);
+        const res = await fetch(`${apiUrl}/reports/portal/${token}`);
         if (!res.ok) {
           if (res.status === 404) throw new Error('Report not found or expired');
           if (res.status === 410) throw new Error('This report has expired');
@@ -310,7 +310,7 @@ export default function ProviderPortalPage() {
     setIsDownloading(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-      const res = await fetch(`${apiUrl}/api/v1/reports/download/${token}`);
+      const res = await fetch(`${apiUrl}/reports/download/${token}`);
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

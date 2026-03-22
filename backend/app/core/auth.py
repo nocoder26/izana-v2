@@ -7,19 +7,29 @@ Provides two dependency functions:
 """
 
 import jwt
+import httpx
+from functools import lru_cache
 from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _get_jwks_client() -> jwt.PyJWKClient:
+    """Create a cached JWKS client for Supabase ES256 token verification."""
+    jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    return jwt.PyJWKClient(jwks_url, cache_keys=True)
 
 
 async def get_user_id(request: Request) -> str:
     """Extract and verify a Supabase JWT from the ``Authorization`` header.
 
-    The token must:
-    - be present as ``Bearer <token>``
-    - be signed with **HS256** using ``SUPABASE_JWT_SECRET``
-    - contain an ``"aud"`` claim equal to ``"authenticated"``
-    - contain a ``"sub"`` claim (the Supabase user ID)
+    Supports both:
+    - **ES256** (ECDSA) — newer Supabase projects, verified via JWKS endpoint
+    - **HS256** (HMAC) — legacy Supabase projects, verified via JWT_SECRET
 
     Returns:
         The ``sub`` claim (user ID) as a string.
@@ -39,12 +49,28 @@ async def get_user_id(request: Request) -> str:
     token = auth_header.removeprefix("Bearer ").strip()
 
     try:
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
+        # Detect algorithm from token header
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg", "HS256")
+
+        if alg == "ES256":
+            # New Supabase: verify with JWKS public key
+            jwks_client = _get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="authenticated",
+            )
+        else:
+            # Legacy Supabase: verify with shared secret
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -57,7 +83,8 @@ async def get_user_id(request: Request) -> str:
             detail="Invalid token audience",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        logger.warning(f"JWT verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",

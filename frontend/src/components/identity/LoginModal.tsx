@@ -43,7 +43,7 @@ export default function LoginModal({ onClose, onSwitchToSignup }: LoginModalProp
     try {
       // Step 1: Lookup the pseudonym to get the associated email
       const lookup = await apiGet<LookupResponse>(
-        `/api/v1/auth/lookup?pseudonym=${encodeURIComponent(pseudonym.trim())}`,
+        `/auth/lookup?pseudonym=${encodeURIComponent(pseudonym.trim())}`,
       );
 
       // Step 2: Sign in via Supabase with the resolved email
@@ -80,7 +80,7 @@ export default function LoginModal({ onClose, onSwitchToSignup }: LoginModalProp
 
     try {
       await apiGet(
-        `/api/v1/auth/recover?phrase=${encodeURIComponent(recoveryPhrase.trim())}`,
+        `/auth/recover?phrase=${encodeURIComponent(recoveryPhrase.trim())}`,
       );
       setRecoveryStatus('Recovery successful! You can now log in with your pseudonym.');
       setShowRecovery(false);

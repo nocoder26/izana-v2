@@ -99,7 +99,7 @@ export function useStreamingChat() {
           headers['Authorization'] = `Bearer ${session.access_token}`;
         }
 
-        const response = await fetch(`${apiUrl}/api/v1/chat/stream`, {
+        const response = await fetch(`${apiUrl}/chat/stream`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
