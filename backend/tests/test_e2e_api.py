@@ -171,8 +171,7 @@ class TestAuthenticatedEndpoints:
             headers=self._headers(),
             json={
                 "treatment_type": "ivf",
-                "phase": "stims",
-                "stim_day": 8,
+                "initial_phase": "stims",
             },
             timeout=TIMEOUT,
         )
