@@ -270,8 +270,8 @@ async def auth_signup(body: SignupRequest) -> SignupResponse:
                 )
             raise
 
-        # Step 2: Insert profile row
-        supabase.table("profiles").insert(
+        # Step 2: Insert profile row (use admin client to bypass RLS)
+        admin.table("profiles").insert(
             {
                 "id": created_user_id,
                 "pseudonym": body.pseudonym,
@@ -281,8 +281,8 @@ async def auth_signup(body: SignupRequest) -> SignupResponse:
             }
         ).execute()
 
-        # Step 3: Insert gamification row
-        supabase.table("user_gamification").insert(
+        # Step 3: Insert gamification row (use admin client to bypass RLS)
+        admin.table("user_gamification").insert(
             {
                 "user_id": created_user_id,
                 "total_points": 0,
@@ -297,7 +297,7 @@ async def auth_signup(body: SignupRequest) -> SignupResponse:
 
         # Step 5: Hash and store recovery phrase
         phrase_hash, salt_hex = _hash_phrase(recovery_phrase)
-        supabase.table("recovery_phrases").insert(
+        admin.table("recovery_phrases").insert(
             {
                 "user_id": created_user_id,
                 "phrase_hash": phrase_hash,
