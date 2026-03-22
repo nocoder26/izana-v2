@@ -251,7 +251,7 @@ async def get_active_chapter(
         logger.error("Failed to get active chapter: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve active chapter.",
+            detail=f"Failed to retrieve active chapter: {str(exc)[:200]}",
         )
 
 
@@ -434,10 +434,11 @@ async def create_journey(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Failed to create journey: %s", exc)
+        import traceback
+        logger.error("Failed to create journey: %s\n%s", exc, traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create journey.",
+            detail=f"Failed to create journey: {str(exc)[:200]}",
         )
 
 
