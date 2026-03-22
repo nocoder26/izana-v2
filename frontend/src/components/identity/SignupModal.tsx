@@ -94,11 +94,19 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
       setRecoveryPhrase(res.recovery_phrase);
       setAccessToken(res.access_token);
 
-      // Set the Supabase session so the user is authenticated
-      if (res.access_token) {
+      // Sign in via Supabase client to properly set the session
+      // (setSession with empty refresh_token doesn't persist)
+      const email = `${pseudonym.toLowerCase()}@users.izana.ai`;
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        console.warn('Post-signup sign-in failed, using token directly:', signInError.message);
+        // Fallback: set session with the token from signup response
         await supabase.auth.setSession({
           access_token: res.access_token,
-          refresh_token: '',
+          refresh_token: res.access_token, // use same token as refresh fallback
         });
       }
     } catch (err) {
