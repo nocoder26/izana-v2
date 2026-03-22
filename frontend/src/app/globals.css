@@ -1,0 +1,65 @@
+/*
+ * This file is intentionally minimal.
+ * The canonical design system lives in src/styles/globals.css
+ * and is imported by the root layout.
+ *
+ * Legacy utilities from earlier stages are preserved below for
+ * backward compatibility until those components are migrated.
+ */
+
+/* ─── Chat Bubble Tails ─── */
+.bubble-izana {
+  position: relative;
+}
+.bubble-izana::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--canvas-sunken);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.bubble-user {
+  position: relative;
+}
+.bubble-user::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--brand-primary);
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* ─── Streak fire pulse ─── */
+@keyframes fire-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.fire-pulse {
+  animation: fire-pulse 2s ease-in-out infinite;
+  display: inline-block;
+}
+
+/* ─── Chat scrollbar ─── */
+.chat-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 2px;
+}
+
+/* ─── Safe area for mobile ─── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

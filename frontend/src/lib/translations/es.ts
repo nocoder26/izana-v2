@@ -1,0 +1,115 @@
+import type { TranslationKeys } from './en';
+
+export const es: TranslationKeys = {
+  common: {
+    loading: 'Cargando...',
+    error: 'Algo sali\u00f3 mal',
+    retry: 'Intentemos de nuevo',
+    done: 'Listo \u2713',
+    notNow: 'Ahora no',
+    gotIt: 'Entendido',
+    continue: 'Continuar \u2192',
+    skipForNow: 'Omitir por ahora',
+  },
+  landing: {
+    headline:
+      'Tu camino de fertilidad es \u00fanico. Tu apoyo tambi\u00e9n deber\u00eda serlo.',
+    cta: 'Comienza mi camino \u2014 gratis y an\u00f3nimo',
+    login: '\u00bfYa tienes una cuenta? Inicia sesi\u00f3n',
+    tagline: 'Bienestar de fertilidad personalizado, impulsado por IA',
+    privacy: 'Tus datos siempre son privados.',
+    features: {
+      personalised: 'Un plan hecho solo para ti',
+      evidence: 'Gu\u00eda basada en evidencia',
+      support: 'Apoyo compasivo 24/7',
+    },
+  },
+  chat: {
+    placeholder: 'Pregunta lo que quieras...',
+    placeholderGrief: 'Estoy aqu\u00ed cuando est\u00e9s lista...',
+    send: 'Enviar',
+    stopGenerating: 'Detener generaci\u00f3n',
+    searchStages: {
+      thinking: 'Pensando...',
+      searching: 'Buscando literatura m\u00e9dica...',
+      analysing: 'Analizando fuentes...',
+      composing: 'Componiendo respuesta...',
+    },
+    sources: 'Fuentes',
+    followUp: 'Preguntas de seguimiento',
+    todayHeader: 'Hoy',
+    greeting: '\u00a1Buenos d\u00edas! \u00bfC\u00f3mo te sientes hoy?',
+  },
+  onboarding: {
+    welcome: 'Bienvenida a Izana',
+    step1Title: 'Cu\u00e9ntanos sobre tu camino',
+    step1Subtitle: 'Esto nos ayuda a personalizar tu experiencia',
+    step2Title: 'Tus metas de bienestar',
+    step2Subtitle: '\u00bfQu\u00e9 es lo m\u00e1s importante para ti ahora?',
+    step3Title: 'Elige tu identidad',
+    step3Subtitle:
+      'Elige un seud\u00f3nimo y avatar \u2014 mant\u00e9n la privacidad que desees',
+    complete: '\u00a1Todo listo! Tu camino comienza ahora.',
+  },
+  errors: {
+    network: 'Perd\u00ed la conexi\u00f3n por un momento. Intentando de nuevo...',
+    server: 'Algo inesperado ocurri\u00f3 de mi lado.',
+    rateLimit:
+      'Necesito un momento para ponerme al d\u00eda. Int\u00e9ntalo en unos segundos.',
+    fileTooLarge:
+      'Ese archivo es un poco grande. \u00bfPodr\u00edas intentar con uno menor a 5MB?',
+    invalidFile:
+      'Puedo leer PDFs e im\u00e1genes (JPEG, PNG). \u00bfPodr\u00edas intentar con uno de esos?',
+    sessionExpired: 'Tu sesi\u00f3n ha terminado. Vamos a reconectarte.',
+    offline: 'Esto necesita conexi\u00f3n a internet.',
+    planNotReady: 'Tu plan a\u00fan est\u00e1 siendo revisado.',
+  },
+  toast: {
+    mealDone: 'Desayuno registrado \u2713 +10 puntos',
+    exerciseDone: '\u00a1Yoga completo! 20 min \u2713',
+    meditationDone: '10 minutos de calma. Hermoso. \u2713',
+    checkinDone: 'Check-in hecho \u2014 gracias \u2713',
+    streak7: '\u00a17 d\u00edas seguidos! \uD83D\uDD25',
+    planApproved: '\u00a1Tu plan personalizado ha llegado! \uD83C\uDF89',
+    copied: 'Copiado \u2713',
+    offlineQueued: 'Guardado \u2014 se sincronizar\u00e1 cuando haya conexi\u00f3n',
+    syncComplete: 'Todo al d\u00eda \u2713',
+  },
+  partner: {
+    invite: 'Invita a tu pareja',
+    inviteDescription:
+      'Comparte tu camino con alguien que se preocupa.',
+    generateCode: 'Generar c\u00f3digo de invitaci\u00f3n',
+    codeExpires: 'El c\u00f3digo expira en {days} d\u00edas',
+    supporting: 'Apoyando a {name}',
+    sendEncouragement: 'Enviar \u00e1nimo',
+    couplesMeditation: 'Meditaci\u00f3n en pareja',
+    askAboutSupporting: 'Preguntar sobre c\u00f3mo apoyar',
+    visibility: 'Visibilidad para la pareja',
+    visibilityDescription:
+      'Controla lo que tu pareja puede ver sobre tu camino.',
+    neverShared: 'Nunca compartido',
+  },
+  sharing: {
+    shareWithDoctor: 'Compartir con tu doctor',
+    selectContent: 'Selecciona qu\u00e9 incluir en tu reporte.',
+    treatmentTimeline: 'L\u00ednea de tiempo del tratamiento',
+    bloodworkResults: 'Resultados de an\u00e1lisis de sangre',
+    checkinHistory: 'Historial de check-ins',
+    planAdherence: 'Adherencia al plan',
+    wellnessProfile: 'Perfil de bienestar',
+    validFor: 'V\u00e1lido por',
+    maxViews: 'M\u00e1ximo de vistas',
+    generateReport: 'Generar reporte',
+    reportGenerated: 'Reporte generado',
+    copyLink: 'Copiar enlace',
+  },
+  offline: {
+    banner: 'Est\u00e1s sin conexi\u00f3n \u2014 algunas funciones pueden estar limitadas',
+    reconnecting: 'Reconectando...',
+    caughtUp: 'Todo al d\u00eda \u2713',
+    queued: '{count} acci\u00f3n en cola',
+    queuedPlural: '{count} acciones en cola',
+    syncing: 'Sincronizando...',
+  },
+} as const;

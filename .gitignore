@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env.local
+
+# Build outputs
+frontend/.next/
+frontend/out/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+frontend/playwright-report/
+frontend/test-results/
+
+# Capacitor
+frontend/ios/
+frontend/android/
+
+# Knowledge base (large PDFs - don't commit)
+backend/knowledge_base/*.pdf
+
+# Logs
+*.log

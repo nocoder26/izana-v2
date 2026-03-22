@@ -1,0 +1,23 @@
+{
+  "name": "Izana Chat",
+  "short_name": "Izana",
+  "description": "Your fertility wellness companion",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF9F7",
+  "theme_color": "#4A3D8F",
+  "orientation": "portrait",
+  "categories": ["health", "wellness"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
