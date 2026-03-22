@@ -75,8 +75,9 @@ export default function SignupModal({ onClose, onSwitchToLogin }: SignupModalPro
       const res = await apiPost<SignupResponse>('/auth/signup', {
         pseudonym,
         avatar,
-        sex,
+        gender: sex === 'M' ? 'Male' : 'Female',
         password,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       });
 
       setUser({
