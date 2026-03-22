@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 from uuid import UUID
 
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.exceptions import EmptyResponseError, RefusalError
 from app.core.logging_config import get_logger
 from app.core.metrics import observe_chat_latency, record_swarm_error

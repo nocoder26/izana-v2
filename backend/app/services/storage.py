@@ -13,7 +13,7 @@ import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)

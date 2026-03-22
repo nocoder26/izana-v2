@@ -20,7 +20,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.logging_config import get_logger
 from app.core.metrics import observe_chat_latency, record_swarm_error
 from app.core.model_config import SWARM_CONFIG, get_swarm_config

@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.logging_config import get_logger
 from app.core.validators import check_for_pii, is_greeting, sanitize_input
 from app.services.clinical_brain import ClinicalBrain

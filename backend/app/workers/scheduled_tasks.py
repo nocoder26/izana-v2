@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
 from app.core.logging_config import get_logger
 from app.services.gamification_service import (
     POINT_VALUES,
