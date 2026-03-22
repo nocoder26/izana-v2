@@ -15,15 +15,15 @@ interface MenuItem {
 }
 
 const PRIMARY_MENU: MenuItem[] = [
-  { label: 'Partner', icon: '💑', href: '/profile/partner' },
-  { label: 'Content library', icon: '📚', href: '/profile/content' },
-  { label: 'Achievements', icon: '🏆', href: '/profile/achievements' },
-  { label: 'Settings', icon: '⚙️', href: '/profile/settings' },
+  { label: 'Partner', icon: '💑', onClick: () => alert('Partner support is coming soon! Connect your partner for daily coaching.') },
+  { label: 'Content library', icon: '📚', href: '/content' },
+  { label: 'Achievements', icon: '🏆', onClick: () => alert('Achievements will unlock as you complete your daily plans and maintain streaks!') },
+  { label: 'Settings', icon: '⚙️', onClick: () => alert('Settings: Theme, language, and notification preferences coming soon.') },
 ];
 
 const SECONDARY_MENU: MenuItem[] = [
-  { label: 'Privacy & data', icon: '🔒', href: '/privacy' },
-  { label: 'About', icon: 'ℹ️', href: '/about' },
+  { label: 'Privacy & data', icon: '🔒', onClick: () => alert('Privacy & data management: Download your data or delete your account. Coming soon.') },
+  { label: 'About', icon: 'ℹ️', onClick: () => alert('Izana Chat v2.0 — Your fertility wellness companion. Built with care.') },
 ];
 
 export default function ProfilePage() {
@@ -141,15 +141,15 @@ export default function ProfilePage() {
             style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
           >
             {PRIMARY_MENU.map((item, i) => (
-              <motion.a
+              <motion.button
                 key={item.label}
-                href={item.href}
+                onClick={() => item.onClick ? item.onClick() : item.href ? (window.location.href = item.href) : null}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.2, delay: i * 0.05 }}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-3.5',
-                  'hover:bg-canvas-sunken transition-colors',
+                  'flex items-center gap-3 px-4 py-3.5 w-full text-left',
+                  'hover:bg-canvas-sunken transition-colors cursor-pointer',
                   i > 0 && 'border-t border-border-default',
                 )}
               >
@@ -158,7 +158,7 @@ export default function ProfilePage() {
                   {item.label}
                 </span>
                 <span className="text-text-tertiary text-sm">›</span>
-              </motion.a>
+              </motion.button>
             ))}
           </div>
         </div>
@@ -170,12 +170,12 @@ export default function ProfilePage() {
             style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
           >
             {SECONDARY_MENU.map((item, i) => (
-              <a
+              <button
                 key={item.label}
-                href={item.href}
+                onClick={() => item.onClick ? item.onClick() : item.href ? (window.location.href = item.href) : null}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-3.5',
-                  'hover:bg-canvas-sunken transition-colors',
+                  'flex items-center gap-3 px-4 py-3.5 w-full text-left',
+                  'hover:bg-canvas-sunken transition-colors cursor-pointer',
                   i > 0 && 'border-t border-border-default',
                 )}
               >
@@ -184,7 +184,7 @@ export default function ProfilePage() {
                   {item.label}
                 </span>
                 <span className="text-text-tertiary text-sm">›</span>
-              </a>
+              </button>
             ))}
 
             {/* Log out */}

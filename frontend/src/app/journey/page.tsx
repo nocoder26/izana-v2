@@ -18,9 +18,9 @@ const MOCK_PHASES: JourneyPhase[] = [
 ];
 
 const QUICK_ACTIONS = [
-  { emoji: '🩸', label: 'Bloodwork' },
-  { emoji: '📊', label: 'Trends' },
-  { emoji: '🩺', label: 'Doctor' },
+  { emoji: '🩸', label: 'Bloodwork', action: () => alert('Bloodwork upload coming soon! You can upload bloodwork results in the Chat tab.') },
+  { emoji: '📊', label: 'Trends', action: () => alert('Mood and adherence trends will be available after your first week of check-ins.') },
+  { emoji: '🩺', label: 'Doctor', action: () => alert('Share your journey with your doctor — this feature is coming soon!') },
 ];
 
 export default function JourneyPage() {
@@ -53,10 +53,11 @@ export default function JourneyPage() {
             <motion.button
               key={action.label}
               whileTap={{ scale: 0.95 }}
+              onClick={action.action}
               className={cn(
                 'flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl',
                 'bg-canvas-elevated border border-border-default',
-                'hover:bg-canvas-sunken transition-colors',
+                'hover:bg-canvas-sunken transition-colors cursor-pointer',
               )}
               style={{ boxShadow: '0 1px 3px rgba(42,36,51,0.04)' }}
             >
