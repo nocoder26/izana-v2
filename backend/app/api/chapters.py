@@ -160,13 +160,13 @@ async def list_chapters(
             .select("id")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not journey_resp.data:
             return []
 
-        journey_id = journey_resp.data["id"]
+        journey_id = journey_resp.data[0]["id"]
 
         chapters_resp = (
             supabase.table("chapters")
@@ -212,7 +212,7 @@ async def get_active_chapter(
             .select("*")
             .eq("user_id", user_id)
             .eq("status", ChapterStatus.ACTIVE.value)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not chapter_resp.data:
@@ -230,10 +230,10 @@ async def get_active_chapter(
             supabase.table("user_gamification")
             .select("current_streak")
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        streak = gam_resp.data["current_streak"] if gam_resp.data else 0
+        streak = gam_resp.data[0]["current_streak"] if gam_resp.data else 0
 
         return ActiveChapterOut(
             id=chapter["id"],
@@ -274,7 +274,7 @@ async def get_chapter_messages(
             supabase.table("chapters")
             .select("id, user_id")
             .eq("id", chapter_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not chapter_resp.data:
@@ -283,7 +283,7 @@ async def get_chapter_messages(
                 detail="Chapter not found.",
             )
 
-        if chapter_resp.data["user_id"] != user_id:
+        if chapter_resp.data[0]["user_id"] != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied.",
@@ -368,7 +368,7 @@ async def create_journey(
             .select("id")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if existing.data:
@@ -455,7 +455,7 @@ async def get_active_journey(
             .select("*")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -465,12 +465,12 @@ async def get_active_journey(
             )
 
         return JourneyOut(
-            id=resp.data["id"],
-            user_id=resp.data["user_id"],
-            treatment_type=resp.data["treatment_type"],
-            phase=resp.data["phase"],
-            is_active=resp.data["is_active"],
-            started_at=resp.data["started_at"],
+            id=resp.data[0]["id"],
+            user_id=resp.data[0]["user_id"],
+            treatment_type=resp.data[0]["treatment_type"],
+            phase=resp.data[0]["phase"],
+            is_active=resp.data[0]["is_active"],
+            started_at=resp.data[0]["started_at"],
         )
 
     except HTTPException:
@@ -504,7 +504,7 @@ async def transition_phase(
             .select("*")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not journey_resp.data:
@@ -531,7 +531,7 @@ async def transition_phase(
             .eq("user_id", user_id)
             .eq("journey_id", journey["id"])
             .eq("status", ChapterStatus.ACTIVE.value)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not chapter_resp.data:

@@ -144,20 +144,20 @@ async def get_wellness_profile(
                 "exercise_preferences, health_conditions, height_cm, weight_kg"
             )
             .eq("id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
             return WellnessProfileOut()
 
         return WellnessProfileOut(
-            allergies=resp.data.get("allergies") or [],
-            dietary_restrictions=resp.data.get("dietary_restrictions") or [],
-            food_preferences=resp.data.get("food_preferences") or [],
-            exercise_preferences=resp.data.get("exercise_preferences") or [],
-            health_conditions=resp.data.get("health_conditions") or [],
-            height_cm=resp.data.get("height_cm"),
-            weight_kg=resp.data.get("weight_kg"),
+            allergies=resp.data[0].get("allergies") or [],
+            dietary_restrictions=resp.data[0].get("dietary_restrictions") or [],
+            food_preferences=resp.data[0].get("food_preferences") or [],
+            exercise_preferences=resp.data[0].get("exercise_preferences") or [],
+            health_conditions=resp.data[0].get("health_conditions") or [],
+            height_cm=resp.data[0].get("height_cm"),
+            weight_kg=resp.data[0].get("weight_kg"),
         )
 
     except Exception as exc:
@@ -247,12 +247,12 @@ async def log_meal(
                 supabase.table("user_gamification")
                 .select("total_points")
                 .eq("user_id", user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if gam_resp.data:
                 supabase.table("user_gamification").update(
-                    {"total_points": gam_resp.data["total_points"] + points}
+                    {"total_points": gam_resp.data[0]["total_points"] + points}
                 ).eq("user_id", user_id).execute()
         except Exception as gam_exc:
             logger.warning("Failed to update gamification for meal: %s", gam_exc)
@@ -306,12 +306,12 @@ async def log_activity(
                 supabase.table("user_gamification")
                 .select("total_points")
                 .eq("user_id", user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if gam_resp.data:
                 supabase.table("user_gamification").update(
-                    {"total_points": gam_resp.data["total_points"] + points}
+                    {"total_points": gam_resp.data[0]["total_points"] + points}
                 ).eq("user_id", user_id).execute()
         except Exception as gam_exc:
             logger.warning("Failed to update gamification for activity: %s", gam_exc)
@@ -369,7 +369,7 @@ async def get_dashboard(
             supabase.table("user_gamification")
             .select("total_points, current_streak, level, level_name")
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         gam = gam_resp.data or {
@@ -411,7 +411,7 @@ async def get_current_plan(
             .in_("status", ["APPROVED", "MODIFIED"])
             .order("created_at", desc=True)
             .limit(1)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -421,12 +421,12 @@ async def get_current_plan(
             )
 
         return PlanOut(
-            id=resp.data["id"],
-            status=resp.data["status"],
-            nutrition_plan=resp.data.get("nutrition_plan"),
-            exercise_plan=resp.data.get("exercise_plan"),
-            mental_health_plan=resp.data.get("mental_health_plan"),
-            created_at=resp.data["created_at"],
+            id=resp.data[0]["id"],
+            status=resp.data[0]["status"],
+            nutrition_plan=resp.data[0].get("nutrition_plan"),
+            exercise_plan=resp.data[0].get("exercise_plan"),
+            mental_health_plan=resp.data[0].get("mental_health_plan"),
+            created_at=resp.data[0]["created_at"],
         )
 
     except HTTPException:
@@ -456,7 +456,7 @@ async def get_plan_status(
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(1)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -465,7 +465,7 @@ async def get_plan_status(
                 message="No plan has been generated yet.",
             )
 
-        status_val = resp.data["status"]
+        status_val = resp.data[0]["status"]
         messages = {
             "GENERATING": "Your plan is being generated...",
             "PENDING_NUTRITIONIST": "Your plan is waiting for nutritionist review.",
@@ -477,7 +477,7 @@ async def get_plan_status(
         }
 
         return PlanStatusOut(
-            plan_id=resp.data["id"],
+            plan_id=resp.data[0]["id"],
             status=status_val,
             message=messages.get(status_val, f"Plan status: {status_val}"),
         )

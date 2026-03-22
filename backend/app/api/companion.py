@@ -148,7 +148,7 @@ async def get_journey_context(
             .select("*")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not journey_resp.data:
@@ -162,16 +162,16 @@ async def get_journey_context(
             .select("*")
             .eq("user_id", user_id)
             .eq("status", ChapterStatus.ACTIVE.value)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
 
         phase = None
         day = 0
         if chapter_resp.data:
-            phase = chapter_resp.data["phase"]
+            phase = chapter_resp.data[0]["phase"]
             start = datetime.fromisoformat(
-                chapter_resp.data["started_at"].replace("Z", "+00:00")
+                chapter_resp.data[0]["started_at"].replace("Z", "+00:00")
             )
             day = (datetime.now(timezone.utc) - start).days + 1
 
@@ -179,10 +179,10 @@ async def get_journey_context(
             supabase.table("user_gamification")
             .select("current_streak")
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        streak = gam_resp.data["current_streak"] if gam_resp.data else 0
+        streak = gam_resp.data[0]["current_streak"] if gam_resp.data else 0
 
         return JourneyContextOut(
             phase=phase,
@@ -223,7 +223,7 @@ async def daily_checkin(
             .select("id")
             .eq("user_id", user_id)
             .eq("date", today)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if existing.data:
@@ -259,14 +259,14 @@ async def daily_checkin(
                 supabase.table("user_gamification")
                 .select("total_points, current_streak")
                 .eq("user_id", user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if gam_resp.data:
                 supabase.table("user_gamification").update(
                     {
-                        "total_points": gam_resp.data["total_points"] + 10,
-                        "current_streak": gam_resp.data["current_streak"] + 1,
+                        "total_points": gam_resp.data[0]["total_points"] + 10,
+                        "current_streak": gam_resp.data[0]["current_streak"] + 1,
                     }
                 ).eq("user_id", user_id).execute()
         except Exception as gam_exc:
@@ -426,7 +426,7 @@ async def record_outcome(
             .select("id, cycle_id")
             .eq("user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not journey_resp.data:
@@ -435,8 +435,8 @@ async def record_outcome(
                 detail="No active journey found.",
             )
 
-        journey_id = journey_resp.data["id"]
-        cycle_id = journey_resp.data.get("cycle_id")
+        journey_id = journey_resp.data[0]["id"]
+        cycle_id = journey_resp.data[0].get("cycle_id")
         now = datetime.now(timezone.utc).isoformat()
         today = date.today().isoformat()
         grief_mode = body.outcome in ("negative", "chemical")
@@ -466,7 +466,7 @@ async def record_outcome(
                 .select("id")
                 .eq("user_id", user_id)
                 .eq("status", ChapterStatus.ACTIVE.value)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if chapter_resp.data:
@@ -475,7 +475,7 @@ async def record_outcome(
                         "status": ChapterStatus.GRIEF.value,
                         "grief_mode": True,
                     }
-                ).eq("id", chapter_resp.data["id"]).execute()
+                ).eq("id", chapter_resp.data[0]["id"]).execute()
 
         # If positive outcome, update chapter status
         if body.outcome == "positive":
@@ -484,13 +484,13 @@ async def record_outcome(
                 .select("id")
                 .eq("user_id", user_id)
                 .eq("status", ChapterStatus.ACTIVE.value)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if chapter_resp.data:
                 supabase.table("chapters").update(
                     {"status": ChapterStatus.POSITIVE.value}
-                ).eq("id", chapter_resp.data["id"]).execute()
+                ).eq("id", chapter_resp.data[0]["id"]).execute()
 
         message = "Outcome recorded."
         if grief_mode:

@@ -357,7 +357,7 @@ async def recovery_regenerate(
         supabase.table("profiles")
         .select("pseudonym")
         .eq("id", user_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     if not profile_resp.data:
@@ -366,7 +366,7 @@ async def recovery_regenerate(
             detail="User profile not found.",
         )
 
-    pseudonym = profile_resp.data["pseudonym"]
+    pseudonym = profile_resp.data[0]["pseudonym"]
     email = f"{pseudonym}@users.izana.ai"
 
     # 2. Verify current password
@@ -421,7 +421,7 @@ async def recovery_attempt(
         supabase.table("profiles")
         .select("id")
         .eq("pseudonym", body.pseudonym)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     if not profile_resp.data:
@@ -430,14 +430,14 @@ async def recovery_attempt(
             detail="Invalid recovery phrase.",
         )
 
-    target_user_id = profile_resp.data["id"]
+    target_user_id = profile_resp.data[0]["id"]
 
     # 2. Get stored hash + salt
     recovery_resp = (
         supabase.table("recovery_phrases")
         .select("phrase_hash, salt")
         .eq("user_id", target_user_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
     if not recovery_resp.data:
@@ -446,8 +446,8 @@ async def recovery_attempt(
             detail="Invalid recovery phrase.",
         )
 
-    stored_hash = recovery_resp.data["phrase_hash"]
-    stored_salt = bytes.fromhex(recovery_resp.data["salt"])
+    stored_hash = recovery_resp.data[0]["phrase_hash"]
+    stored_salt = bytes.fromhex(recovery_resp.data[0]["salt"])
 
     # 3. Hash submitted phrase with stored salt and compare
     submitted_hash, _ = _hash_phrase(body.recovery_phrase, salt=stored_salt)

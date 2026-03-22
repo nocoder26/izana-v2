@@ -174,7 +174,7 @@ async def nutritionist_login(
             supabase.table("nutritionists")
             .select("id, name, password_hash")
             .eq("email", body.email)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -261,10 +261,10 @@ async def get_approval_queue(
                 supabase.table("profiles")
                 .select("pseudonym")
                 .eq("id", p["user_id"])
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            pseudonym = profile_resp.data["pseudonym"] if profile_resp.data else None
+            pseudonym = profile_resp.data[0]["pseudonym"] if profile_resp.data else None
 
             items.append(
                 QueueItem(
@@ -408,7 +408,7 @@ async def get_plan_for_review(
             supabase.table("plans")
             .select("*")
             .eq("id", plan_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not plan_resp.data:
@@ -425,7 +425,7 @@ async def get_plan_for_review(
             supabase.table("profiles")
             .select("*")
             .eq("id", plan_user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         user_profile = profile_resp.data
@@ -438,7 +438,7 @@ async def get_plan_for_review(
             .select("*")
             .eq("user_id", plan_user_id)
             .eq("status", "active")
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         journey_context = journey_resp.data
@@ -534,7 +534,7 @@ async def modify_plan(
             supabase.table("plans")
             .select("plan_data")
             .eq("id", plan_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not original_resp.data:
@@ -549,7 +549,7 @@ async def modify_plan(
                 {
                     "id": str(uuid4()),
                     "plan_id": plan_id,
-                    "original_data": original_resp.data.get("plan_data"),
+                    "original_data": original_resp.data[0].get("plan_data"),
                     "modifications": body.modifications,
                     "notes": body.notes,
                     "created_at": now,

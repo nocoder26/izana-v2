@@ -127,7 +127,7 @@ async def export_user_data(
             supabase.table("profiles")
             .select("*")
             .eq("id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         data["profile"] = profile_resp.data
@@ -186,7 +186,7 @@ async def export_user_data(
             supabase.table("gamification")
             .select("*")
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         data["gamification"] = gam_resp.data

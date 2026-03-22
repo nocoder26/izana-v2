@@ -180,7 +180,7 @@ async def get_stream_url(
             supabase.table("wellness_content")
             .select("id, title, content_type, cloudflare_stream_id")
             .eq("id", content_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -194,7 +194,7 @@ async def get_stream_url(
             datetime.now(timezone.utc) + timedelta(hours=2)
         ).isoformat()
 
-        stream_id = resp.data.get("cloudflare_stream_id") or content_id
+        stream_id = resp.data[0].get("cloudflare_stream_id") or content_id
 
         return StreamUrlOut(
             stream_url=f"https://stream.cloudflare.com/placeholder/{stream_id}",
@@ -274,7 +274,7 @@ async def rate_content(
             supabase.table("wellness_content")
             .select("id")
             .eq("id", content_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not content_resp.data:

@@ -133,7 +133,7 @@ async def view_shared_report(
             supabase.table("share_tokens")
             .select("*")
             .eq("token", token)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not token_resp.data:
@@ -176,10 +176,10 @@ async def view_shared_report(
             supabase.table("profiles")
             .select("pseudonym")
             .eq("id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        pseudonym = profile_resp.data["pseudonym"] if profile_resp.data else "User"
+        pseudonym = profile_resp.data[0]["pseudonym"] if profile_resp.data else "User"
 
         # Build report based on includes
         journey_data = None
@@ -192,7 +192,7 @@ async def view_shared_report(
                 .select("treatment_type, cycle_number, status, created_at")
                 .eq("user_id", user_id)
                 .eq("status", "active")
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if journey_resp.data:
@@ -220,7 +220,7 @@ async def view_shared_report(
                 .in_("status", ["approved", "modified"])
                 .order("created_at", desc=True)
                 .limit(1)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if plan_resp.data:
@@ -262,7 +262,7 @@ async def download_report_pdf(
             supabase.table("share_tokens")
             .select("expires_at, user_id")
             .eq("token", token)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not token_resp.data:
@@ -272,7 +272,7 @@ async def download_report_pdf(
             )
 
         expires_at = datetime.fromisoformat(
-            token_resp.data["expires_at"].replace("Z", "+00:00")
+            token_resp.data[0]["expires_at"].replace("Z", "+00:00")
         )
         if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(
@@ -286,7 +286,7 @@ async def download_report_pdf(
                 {
                     "id": str(uuid4()),
                     "action": "report_downloaded",
-                    "user_id": token_resp.data["user_id"],
+                    "user_id": token_resp.data[0]["user_id"],
                     "share_token": token,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }

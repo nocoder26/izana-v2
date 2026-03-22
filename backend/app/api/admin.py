@@ -395,7 +395,7 @@ async def get_swarm_prompt(
             .eq("swarm_id", swarm_id)
             .order("version", desc=True)
             .limit(1)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not resp.data:
@@ -405,10 +405,10 @@ async def get_swarm_prompt(
             )
 
         return PromptOut(
-            swarm_id=resp.data["swarm_id"],
-            prompt_text=resp.data["prompt_text"],
-            version=resp.data["version"],
-            updated_at=resp.data.get("updated_at", resp.data.get("created_at", "")),
+            swarm_id=resp.data[0]["swarm_id"],
+            prompt_text=resp.data[0]["prompt_text"],
+            version=resp.data[0]["version"],
+            updated_at=resp.data[0].get("updated_at", resp.data[0].get("created_at", "")),
         )
 
     except HTTPException:
@@ -449,10 +449,10 @@ async def update_swarm_prompt(
             .eq("swarm_id", swarm_id)
             .order("version", desc=True)
             .limit(1)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        current_version = current_resp.data["version"] if current_resp.data else 0
+        current_version = current_resp.data[0]["version"] if current_resp.data else 0
         new_version = current_version + 1
 
         # Insert new version

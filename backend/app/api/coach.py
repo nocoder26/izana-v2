@@ -179,7 +179,7 @@ async def join_partner(
             .eq("invite_code", body.invite_code)
             .is_("partner_user_id", "null")
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not invite_resp.data:
@@ -218,10 +218,10 @@ async def join_partner(
             supabase.table("profiles")
             .select("pseudonym")
             .eq("id", invite["primary_user_id"])
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        pseudonym = profile_resp.data["pseudonym"] if profile_resp.data else "Partner"
+        pseudonym = profile_resp.data[0]["pseudonym"] if profile_resp.data else "Partner"
 
         return JoinResponse(
             success=True,
@@ -260,7 +260,7 @@ async def get_partner_dashboard(
             .select("*")
             .eq("partner_user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if not link_resp.data:
@@ -281,10 +281,10 @@ async def get_partner_dashboard(
             supabase.table("profiles")
             .select("pseudonym")
             .eq("id", linked_user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        pseudonym = profile_resp.data["pseudonym"] if profile_resp.data else "Partner"
+        pseudonym = profile_resp.data[0]["pseudonym"] if profile_resp.data else "Partner"
 
         mood_today = None
         current_phase = None
@@ -298,11 +298,11 @@ async def get_partner_dashboard(
                 .select("mood")
                 .eq("user_id", linked_user_id)
                 .eq("date", date_type.today().isoformat())
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if checkin_resp.data:
-                mood_today = checkin_resp.data["mood"]
+                mood_today = checkin_resp.data[0]["mood"]
 
         if visibility.get("phase"):
             chapter_resp = (
@@ -310,22 +310,22 @@ async def get_partner_dashboard(
                 .select("phase")
                 .eq("user_id", linked_user_id)
                 .eq("status", "active")
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if chapter_resp.data:
-                current_phase = chapter_resp.data["phase"]
+                current_phase = chapter_resp.data[0]["phase"]
 
         if visibility.get("streak") or visibility.get("plan_adherence"):
             gam_resp = (
                 supabase.table("user_gamification")
                 .select("current_streak")
                 .eq("user_id", linked_user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             if gam_resp.data:
-                streak = gam_resp.data["current_streak"]
+                streak = gam_resp.data[0]["current_streak"]
 
         return PartnerDashboardOut(
             partner_pseudonym=pseudonym,
@@ -363,21 +363,21 @@ async def get_partner_status(
             .select("*")
             .eq("primary_user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        if link_resp.data and link_resp.data.get("partner_user_id"):
+        if link_resp.data and link_resp.data[0].get("partner_user_id"):
             profile_resp = (
                 supabase.table("profiles")
                 .select("pseudonym")
-                .eq("id", link_resp.data["partner_user_id"])
-                .maybe_single()
+                .eq("id", link_resp.data[0]["partner_user_id"])
+                .limit(1)
                 .execute()
             )
             return PartnerStatusOut(
                 linked=True,
-                partner_pseudonym=profile_resp.data["pseudonym"] if profile_resp.data else None,
-                linked_at=link_resp.data.get("created_at"),
+                partner_pseudonym=profile_resp.data[0]["pseudonym"] if profile_resp.data else None,
+                linked_at=link_resp.data[0].get("created_at"),
             )
 
         # Check as partner
@@ -386,7 +386,7 @@ async def get_partner_status(
             .select("*")
             .eq("partner_user_id", user_id)
             .eq("is_active", True)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if link_resp2.data:
@@ -394,12 +394,12 @@ async def get_partner_status(
                 supabase.table("profiles")
                 .select("pseudonym")
                 .eq("id", link_resp2.data["primary_user_id"])
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
             return PartnerStatusOut(
                 linked=True,
-                partner_pseudonym=profile_resp.data["pseudonym"] if profile_resp.data else None,
+                partner_pseudonym=profile_resp.data[0]["pseudonym"] if profile_resp.data else None,
                 linked_at=link_resp2.data.get("created_at"),
             )
 
@@ -501,7 +501,7 @@ async def get_gamification_summary(
             supabase.table("user_gamification")
             .select("total_points, current_streak, level, level_name")
             .eq("user_id", user_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         gam = gam_resp.data or {
