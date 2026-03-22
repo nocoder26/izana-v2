@@ -46,6 +46,9 @@ class WellnessProfileOut(BaseModel):
     health_conditions: list[str] = Field(default_factory=list)
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
+    age_range: Optional[str] = None
+    fitness_level: Optional[str] = None
+    exercise_time_minutes: Optional[int] = None
 
 
 class WellnessProfileUpdate(BaseModel):
@@ -57,6 +60,13 @@ class WellnessProfileUpdate(BaseModel):
     exercise_preferences: Optional[list[str]] = None
     health_conditions: Optional[list[str]] = None
     height_cm: Optional[float] = None
+    age_range: Optional[str] = None
+    fitness_level: Optional[str] = None
+    smoking_status: Optional[str] = None
+    alcohol_consumption: Optional[str] = None
+    sleep_duration: Optional[str] = None
+    stress_level: Optional[str] = None
+    exercise_time_minutes: Optional[int] = None
     weight_kg: Optional[float] = None
 
 
@@ -141,7 +151,8 @@ async def get_wellness_profile(
             supabase.table("profiles")
             .select(
                 "allergies, dietary_restrictions, food_preferences, "
-                "exercise_preferences, health_conditions, height_cm, weight_kg"
+                "exercise_preferences, health_conditions, height_cm, weight_kg, "
+                "age_range, fitness_level, exercise_time_minutes"
             )
             .eq("id", user_id)
             .limit(1)

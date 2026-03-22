@@ -72,9 +72,11 @@ export default function ChatPage() {
 
         // Profile exists but check if onboarding was actually completed
         // (signup creates empty profile — onboarding fills it)
-        const hasCompletedOnboarding = profile.age_range !== null
+        const hasCompletedOnboarding = Boolean(
+          (profile.age_range && profile.age_range !== null)
           || (profile.exercise_preferences && profile.exercise_preferences.length > 0)
-          || (profile.allergies && profile.allergies.length > 0);
+          || (profile.allergies && profile.allergies.length > 0)
+        );
 
         if (hasCompletedOnboarding) {
           // User completed onboarding — load chat
