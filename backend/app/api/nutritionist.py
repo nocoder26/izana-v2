@@ -159,7 +159,6 @@ class RejectResponse(BaseModel):
 @router.post("/nutritionist/auth/login", response_model=NutritionistLoginResponse)
 async def nutritionist_login(
     body: NutritionistLoginRequest,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
 ) -> NutritionistLoginResponse:
     """Nutritionist email + password login.
 
@@ -171,7 +170,7 @@ async def nutritionist_login(
     try:
         # Look up nutritionist by email
         resp = (
-            supabase.table("nutritionists")
+            supabase.table("admin_users")
             .select("id, name, password_hash")
             .eq("email", body.email)
             .limit(1)
@@ -183,13 +182,13 @@ async def nutritionist_login(
                 detail="Invalid credentials.",
             )
 
-        nutritionist = resp.data
+        nutritionist = resp.data[0]
 
-        # Verify password (placeholder — in production use bcrypt)
-        import hashlib
+        # Verify password with bcrypt
+        import bcrypt as _bcrypt
 
-        submitted_hash = hashlib.sha256(body.password.encode()).hexdigest()
-        if submitted_hash != nutritionist.get("password_hash", ""):
+        stored_hash = nutritionist.get("password_hash", "")
+        if not stored_hash or not _bcrypt.checkpw(body.password.encode(), stored_hash.encode()):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials.",

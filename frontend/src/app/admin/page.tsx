@@ -64,18 +64,15 @@ export default function AdminPage() {
     setLoginLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/admin/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, api_key: apiKey }),
+      // Admin auth uses X-Admin-API-Key header — validate by testing /admin/dashboard
+      const res = await fetch(`${API_URL}/admin/dashboard`, {
+        headers: { 'X-Admin-API-Key': apiKey },
       });
 
       if (!res.ok) {
-        throw new Error('Invalid credentials');
+        throw new Error('Invalid API key');
       }
 
-      const data = await res.json();
-      if (data.token) sessionStorage.setItem('admin_jwt', data.token);
       sessionStorage.setItem('admin_api_key', apiKey);
       setIsAuthenticated(true);
     } catch (err) {

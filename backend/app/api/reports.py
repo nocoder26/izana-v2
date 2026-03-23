@@ -127,7 +127,7 @@ async def generate_share_token(
         logger.error("Failed to generate share token: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate share token.",
+            detail=f"Failed to generate share token: {str(exc)[:200]}",
         )
 
 
