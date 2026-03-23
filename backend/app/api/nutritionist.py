@@ -21,12 +21,33 @@ from typing import Annotated, Any, Optional
 from uuid import uuid4
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_admin_key
 from app.core.config import settings
-from app.core.database import get_supabase_client
+from app.core.database import get_supabase_admin as get_supabase_client
+
+
+async def get_nutritionist_id(request: Request) -> str:
+    """Verify nutritionist JWT OR admin API key. Returns nutritionist_id."""
+    # Try admin API key first
+    admin_key = request.headers.get("X-Admin-API-Key")
+    if admin_key and admin_key == settings.ADMIN_API_KEY:
+        return "admin"
+
+    # Try nutritionist JWT
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+        try:
+            import jwt as _jwt
+            payload = _jwt.decode(token, settings.NUTRITIONIST_JWT_SECRET, algorithms=["HS256"])
+            return payload.get("sub", "")
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=403, detail="Invalid nutritionist credentials")
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +250,7 @@ async def nutritionist_login(
 
 @router.get("/nutritionist/queue", response_model=QueueOut)
 async def get_approval_queue(
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
     status_filter: Optional[str] = Query(default=None, alias="status"),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
@@ -241,7 +262,7 @@ async def get_approval_queue(
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("plans").select("*", count="exact")
+        query = supabase.table("approval_queue").select("*", count="exact")
 
         if status_filter:
             query = query.eq("status", status_filter)
@@ -297,7 +318,7 @@ async def get_approval_queue(
 
 @router.get("/nutritionist/queue/stats", response_model=QueueStats)
 async def get_queue_stats(
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
 ) -> QueueStats:
     """Get queue statistics."""
     supabase = get_supabase_client()
@@ -305,7 +326,7 @@ async def get_queue_stats(
     try:
         # Pending count
         pending_resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .select("id", count="exact")
             .eq("status", "pending_nutritionist")
             .execute()
@@ -314,7 +335,7 @@ async def get_queue_stats(
 
         # In review count
         review_resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .select("id", count="exact")
             .eq("status", "in_review")
             .execute()
@@ -326,7 +347,7 @@ async def get_queue_stats(
 
         today = date.today().isoformat()
         approved_resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .select("id", count="exact")
             .in_("status", ["approved", "modified"])
             .gte("approved_at", today)
@@ -351,7 +372,7 @@ async def get_queue_stats(
 @router.post("/nutritionist/queue/{plan_id}/assign", response_model=AssignResponse)
 async def assign_plan(
     plan_id: str,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
     nutritionist_id: str = Query(..., description="ID of the nutritionist"),
 ) -> AssignResponse:
     """Assign a plan to a nutritionist for review."""
@@ -361,7 +382,7 @@ async def assign_plan(
         now = datetime.now(timezone.utc).isoformat()
 
         resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .update(
                 {
                     "status": "in_review",
@@ -398,7 +419,7 @@ async def assign_plan(
 @router.get("/nutritionist/plan/{plan_id}", response_model=PlanReviewOut)
 async def get_plan_for_review(
     plan_id: str,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
 ) -> PlanReviewOut:
     """Get plan data for review (3-panel data).
 
@@ -409,7 +430,7 @@ async def get_plan_for_review(
     try:
         # Get plan
         plan_resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .select("*")
             .eq("id", plan_id)
             .limit(1)
@@ -474,7 +495,7 @@ async def get_plan_for_review(
 async def approve_plan(
     plan_id: str,
     body: ApproveRequest,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
 ) -> ApproveResponse:
     """Approve a plan."""
     supabase = get_supabase_client()
@@ -483,7 +504,7 @@ async def approve_plan(
         now = datetime.now(timezone.utc).isoformat()
 
         resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .update(
                 {
                     "status": "approved",
@@ -521,7 +542,7 @@ async def approve_plan(
 async def modify_plan(
     plan_id: str,
     body: ModifyRequest,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
 ) -> ModifyResponse:
     """Modify and approve a plan.
 
@@ -535,7 +556,7 @@ async def modify_plan(
 
         # Get original plan data for DPO
         original_resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .select("plan_data")
             .eq("id", plan_id)
             .limit(1)
@@ -563,7 +584,7 @@ async def modify_plan(
             logger.warning("Failed to save DPO data: %s", dpo_exc)
 
         # Update plan
-        supabase.table("plans").update(
+        supabase.table("approval_queue").update(
             {
                 "status": "modified",
                 "plan_data": body.modifications,
@@ -592,7 +613,7 @@ async def modify_plan(
 async def reject_plan(
     plan_id: str,
     body: RejectRequest,
-    _admin_key: Annotated[str, Depends(get_admin_key)],
+    _admin_key: Annotated[str, Depends(get_nutritionist_id)],
 ) -> RejectResponse:
     """Reject a plan, optionally requesting regeneration."""
     supabase = get_supabase_client()
@@ -601,7 +622,7 @@ async def reject_plan(
         now = datetime.now(timezone.utc).isoformat()
 
         resp = (
-            supabase.table("plans")
+            supabase.table("approval_queue")
             .update(
                 {
                     "status": "rejected",
