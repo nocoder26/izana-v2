@@ -188,7 +188,12 @@ async def nutritionist_login(
         import bcrypt as _bcrypt
 
         stored_hash = nutritionist.get("password_hash", "")
-        if not stored_hash or not _bcrypt.checkpw(body.password.encode(), stored_hash.encode()):
+        try:
+            pw_ok = stored_hash and _bcrypt.checkpw(body.password.encode(), stored_hash.encode())
+        except Exception as pw_err:
+            logger.error("bcrypt error: %s (hash_prefix=%s)", pw_err, stored_hash[:10] if stored_hash else "NONE")
+            pw_ok = False
+        if not pw_ok:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials.",
