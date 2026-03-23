@@ -422,6 +422,14 @@ async def create_journey(
             }
         ).execute()
 
+        # 4. Auto-generate a plan and add to nutritionist queue
+        try:
+            from app.services.plan_service import trigger_plan_generation
+            import asyncio
+            asyncio.ensure_future(trigger_plan_generation(user_id))
+        except Exception as plan_err:
+            logger.warning("Plan generation trigger failed (non-blocking): %s", plan_err)
+
         return JourneyOut(
             id=journey_id,
             user_id=user_id,
